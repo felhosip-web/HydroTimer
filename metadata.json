@@ -1,0 +1,6 @@
+{
+  "name": "HydroTimer - Ismétlődő Okosóra Időzítő",
+  "description": "Ismétlődő emlékeztető és időzítő app (vízivás, pihenés, gyógyszer) okosóra (Wear OS / Bluetooth) kapcsolattal, valós hang- és rezgésjelzéssel, valamint natív Android és Wear OS forráskód-generátorral.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,72 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build HydroTimer Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+          cache: 'gradle'
+
+      - name: Grant execute permission for gradlew
+        run: |
+          if [ -f "./gradlew" ]; then
+            chmod +x ./gradlew
+          elif [ -f "./android/gradlew" ]; then
+            chmod +x ./android/gradlew
+          fi
+
+      - name: Build Debug APK with Gradle
+        run: |
+          if [ -f "./gradlew" ]; then
+            ./gradlew assembleDebug --stacktrace
+          elif [ -f "./android/gradlew" ]; then
+            cd android && ./gradlew assembleDebug --stacktrace
+          else
+            echo "Gradle wrapper not found, generating wrapper..."
+            gradle wrapper
+            ./gradlew assembleDebug --stacktrace
+          fi
+
+      - name: Upload Debug APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: HydroTimer-Debug-APK
+          path: |
+            **/build/outputs/apk/debug/*.apk
+          retention-days: 14
+
+      - name: Build Release APK (Unsigned)
+        run: |
+          if [ -f "./gradlew" ]; then
+            ./gradlew assembleRelease --stacktrace || echo "Release build skipped or requires signing"
+          elif [ -f "./android/gradlew" ]; then
+            cd android && ./gradlew assembleRelease --stacktrace || echo "Release build skipped"
+          fi
+
+      - name: Upload Release APK Artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: HydroTimer-Release-APK
+          path: |
+            **/build/outputs/apk/release/*.apk
+          retention-days: 14

@@ -1,0 +1,18 @@
+<resources>
+    <string name="app_name">HydroTimer</string>
+    <string name="notification_channel_name">Vízivás és Szokás Értesítések</string>
+    <string name="notification_channel_desc">Rendszeres hidratációs és szokás emlékeztetők telefonra és okosórára</string>
+    <string name="missed_channel_name">Elmulasztott Jelzések</string>
+    <string name="missed_channel_desc">Figyelmeztető értesítések ha a jelzés nem került nyugtázásra</string>
+    <string name="reminder_title">💧 Ideje inni egy pohár vizet!</string>
+    <string name="reminder_body">Frissítsd fel a szervezeted 2.5 dl tiszta vízzel.</string>
+    <string name="missed_alert_title">⚠️ Elmulasztott jelzés!</string>
+    <string name="missed_alert_body">Nem érkezett nyugtázás %1$d mp-en belül. A következő időszakasz automatikusan elindult!</string>
+    <string name="action_drink">Megittam (+250ml)</string>
+    <string name="action_acknowledge">Nyugtázás</string>
+    <string name="action_snooze">10 perc múlva</string>
+    <string name="status_running">Időzítő aktív</string>
+    <string name="status_paused">Időzítő szünetel</string>
+    <string name="alert_duration_title">Jelzés és nyugtázási időtartam</string>
+    <string name="alert_duration_desc">Mennyi ideig csörögjön a készülék nyugtázásra várva</string>
+</resources>
