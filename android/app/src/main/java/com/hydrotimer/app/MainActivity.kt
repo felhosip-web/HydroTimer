@@ -209,6 +209,7 @@ class MainActivity : AppCompatActivity() {
         stylePresetBtn(binding.btnQuiet23to7, isEnabled && is23to7)
         stylePresetBtn(binding.btnQuiet22to6, isEnabled && is22to6)
         stylePresetBtn(binding.btnQuietCustom, isEnabled && !is23to7 && !is22to6)
+    }
 
     private fun setAlertDuration(seconds: Int) {
         val sanitized = Math.max(5, seconds)
