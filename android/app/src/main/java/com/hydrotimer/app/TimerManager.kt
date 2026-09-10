@@ -162,13 +162,19 @@ class TimerManager(private val context: Context) {
     fun getNextTriggerTimestamp(): Long = prefs.getLong(KEY_NEXT_TRIGGER_TIMESTAMP, 0L)
 
     fun getTodayDrunkMl(): Int = prefs.getInt(KEY_TODAY_DRUNK_ML, 0)
+    fun setTodayDrunkMl(ml: Int) {
+        prefs.edit().putInt(KEY_TODAY_DRUNK_ML, ml).apply()
+    }
     fun addDrunkMl(ml: Int): Int {
         val current = getTodayDrunkMl() + ml
-        prefs.edit().putInt(KEY_TODAY_DRUNK_ML, current).apply()
+        setTodayDrunkMl(current)
         return current
     }
 
     fun getDailyTargetMl(): Int = prefs.getInt(KEY_DAILY_TARGET_ML, 2500)
+    fun setDailyTargetMl(ml: Int) {
+        prefs.edit().putInt(KEY_DAILY_TARGET_ML, ml).apply()
+    }
 
     fun recordMissedAlert() {
         val currentCount = prefs.getInt(KEY_MISSED_COUNT, 0) + 1

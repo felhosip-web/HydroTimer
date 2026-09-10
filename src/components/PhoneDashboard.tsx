@@ -54,6 +54,7 @@ interface PhoneDashboardProps {
   onDeleteCustomEvent: (id: string) => void;
   isQuietHoursActive?: boolean;
   onUpdateQuietHours?: (enabled: boolean, start?: string, end?: string) => void;
+  onUpdateAutoRestart?: (autoRestart: boolean) => void;
 }
 
 const calculateHoursDuration = (startStr: string, endStr: string) => {
@@ -93,6 +94,7 @@ export const PhoneDashboard: React.FC<PhoneDashboardProps> = ({
   onDeleteCustomEvent,
   isQuietHoursActive = false,
   onUpdateQuietHours,
+  onUpdateAutoRestart,
 }) => {
   const [isEditingEventModalOpen, setIsEditingEventModalOpen] = useState(false);
   const [selectedEventToEdit, setSelectedEventToEdit] = useState<CustomEventItem | null>(null);
@@ -313,6 +315,34 @@ export const PhoneDashboard: React.FC<PhoneDashboardProps> = ({
       ) : (
         /* INTERVAL MODE: 6 CUSTOM EVENT SLOTS */
         <div className="w-full">
+          <div className="w-full bg-slate-900/80 p-1.5 rounded-2xl border border-slate-800 shadow-inner grid grid-cols-2 gap-1.5 mb-4">
+            <button
+              type="button"
+              onClick={() => onUpdateAutoRestart?.(true)}
+              className={`py-2 px-2 rounded-xl text-[11px] font-bold transition-all flex items-center justify-center gap-1.5 ${
+                config.autoRestart
+                  ? 'bg-sky-500 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+              }`}
+            >
+              <Repeat className="w-3.5 h-3.5" />
+              <span>Folyamatos</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => onUpdateAutoRestart?.(false)}
+              className={`py-2 px-2 rounded-xl text-[11px] font-bold transition-all flex items-center justify-center gap-1.5 ${
+                !config.autoRestart
+                  ? 'bg-amber-500 text-slate-950 shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+              }`}
+            >
+              <Timer className="w-3.5 h-3.5" />
+              <span>Egyszeri</span>
+            </button>
+          </div>
+
           <div className="flex items-center justify-between mb-2 px-1">
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">

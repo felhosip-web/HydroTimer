@@ -660,6 +660,7 @@ export default function App() {
               onDeleteCustomEvent={handleDeleteCustomEvent}
               isQuietHoursActive={isCurrentlyInQuietHours()}
               onUpdateQuietHours={handleUpdateQuietHours}
+              onUpdateAutoRestart={(autoRestart) => setConfig((prev) => ({ ...prev, autoRestart }))}
             />
           </div>
 
