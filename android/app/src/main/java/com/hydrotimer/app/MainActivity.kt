@@ -87,6 +87,12 @@ class MainActivity : AppCompatActivity() {
             binding.cardMissedAlert.visibility = View.GONE
         }
 
+        // Interval Quick Buttons: 30m, 45m, 60m + Custom input
+        binding.btnInterval30m.setOnClickListener { setInterval(30) }
+        binding.btnInterval45m.setOnClickListener { setInterval(45) }
+        binding.btnInterval60m.setOnClickListener { setInterval(60) }
+        binding.btnIntervalCustom.setOnClickListener { showCustomIntervalDialog() }
+
         // Alert Duration Quick Buttons: 5s (min), 15s, 30s + Custom input
         binding.btnDuration5s.setOnClickListener { setAlertDuration(5) }
         binding.btnDuration15s.setOnClickListener { setAlertDuration(15) }
@@ -122,6 +128,115 @@ class MainActivity : AppCompatActivity() {
         binding.btnQuietCustom.setOnClickListener {
             showCustomQuietHoursDialog()
         }
+
+        binding.btnEditProgress.setOnClickListener {
+            showEditProgressDialog()
+        }
+    }
+
+    private fun setInterval(minutes: Int) {
+        val sanitized = Math.max(1, minutes)
+        timerManager.setIntervalMinutes(sanitized)
+        if (timerManager.isTimerRunning()) {
+            timerManager.stopTimer()
+            timerManager.startTimer(sanitized)
+        }
+        updateIntervalButtonStyles()
+        Toast.makeText(this, "Ciklus idő: $sanitized perc", Toast.LENGTH_SHORT).show()
+        updateUIState()
+    }
+
+    private fun showCustomIntervalDialog() {
+        val input = EditText(this).apply {
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+            hint = "Perc (min. 1)"
+            setText(timerManager.getIntervalMinutes().toString())
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("Egyedi Ciklus Idő")
+            .setMessage("Add meg az értesítések közötti időt percben:")
+            .setView(input)
+            .setPositiveButton("Mentés") { _, _ ->
+                val text = input.text.toString()
+                val value = text.toIntOrNull() ?: 30
+                setInterval(value)
+            }
+            .setNegativeButton("Mégse", null)
+            .show()
+    }
+
+    private fun updateIntervalButtonStyles() {
+        val currentInterval = timerManager.getIntervalMinutes()
+
+        fun applyStyle(btn: com.google.android.material.button.MaterialButton, isSelected: Boolean) {
+            if (isSelected) {
+                btn.setBackgroundColor(ContextCompat.getColor(this, R.color.primary))
+                btn.setTextColor(ContextCompat.getColor(this, R.color.text_primary))
+                btn.strokeWidth = 0
+            } else {
+                btn.setBackgroundColor(ContextCompat.getColor(this, android.R.color.transparent))
+                btn.setTextColor(ContextCompat.getColor(this, R.color.text_secondary))
+                btn.strokeWidth = 2
+            }
+        }
+
+        applyStyle(binding.btnInterval30m, currentInterval == 30)
+        applyStyle(binding.btnInterval45m, currentInterval == 45)
+        applyStyle(binding.btnInterval60m, currentInterval == 60)
+        applyStyle(binding.btnIntervalCustom, currentInterval !in listOf(30, 45, 60))
+    }
+
+    private fun showEditProgressDialog() {
+        val layout = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(50, 20, 50, 20)
+        }
+
+        val tvCurrent = android.widget.TextView(this).apply { text = "Jelenlegi fogyasztás (ml):" }
+        val inputCurrent = EditText(this).apply {
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+            hint = "Pl. 1250"
+            setText(timerManager.getTodayDrunkMl().toString())
+        }
+
+        val tvTarget = android.widget.TextView(this).apply {
+            text = "Napi cél (ml):"
+            setPadding(0, 20, 0, 0)
+        }
+        val inputTarget = EditText(this).apply {
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+            hint = "Pl. 2500"
+            setText(timerManager.getDailyTargetMl().toString())
+        }
+
+        layout.addView(tvCurrent)
+        layout.addView(inputCurrent)
+        layout.addView(tvTarget)
+        layout.addView(inputTarget)
+
+        AlertDialog.Builder(this)
+            .setTitle("Fogyasztás és Cél Módosítása")
+            .setView(layout)
+            .setPositiveButton("Mentés") { _, _ ->
+                val currentText = inputCurrent.text.toString()
+                val targetText = inputTarget.text.toString()
+
+                val currentVal = currentText.toIntOrNull()
+                val targetVal = targetText.toIntOrNull()
+
+                if (currentVal != null) {
+                    timerManager.setTodayDrunkMl(currentVal)
+                }
+                if (targetVal != null) {
+                    timerManager.setDailyTargetMl(targetVal)
+                }
+
+                updateProgress()
+                Toast.makeText(this, "Adatok frissítve", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("Mégse", null)
+            .show()
     }
 
     private fun showCustomQuietHoursDialog() {
@@ -291,6 +406,7 @@ class MainActivity : AppCompatActivity() {
         }
         updateProgress()
         updateDurationButtonStyles()
+        updateIntervalButtonStyles()
         updateQuietHoursUI()
         checkMissedAlertBanner()
     }
