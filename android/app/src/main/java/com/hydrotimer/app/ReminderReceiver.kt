@@ -44,8 +44,9 @@ class ReminderReceiver : BroadcastReceiver() {
                 notificationManager.cancel(NotificationHelper.NOTIFICATION_ID)
 
                 // 2. Log drink
-                val updatedTotal = timerManager.addDrunkMl(250)
-                Toast.makeText(context, "💧 +250 ml rögzítve! Összesen: ${updatedTotal} ml", Toast.LENGTH_SHORT).show()
+                val intake = timerManager.getIntakePerAlertMl()
+                val updatedTotal = timerManager.addDrunkMl(intake)
+                Toast.makeText(context, "💧 +$intake ml rögzítve! Összesen: ${updatedTotal} ml", Toast.LENGTH_SHORT).show()
 
                 // 3. Start next occurrence
                 timerManager.scheduleNextOccurrence()

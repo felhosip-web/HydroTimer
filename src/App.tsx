@@ -675,6 +675,7 @@ export default function App() {
                 setLogs([]);
                 setWaterIntakeMl(0);
               }}
+              onEditProgress={(newAmount) => setWaterIntakeMl(newAmount)}
             />
           </div>
         </div>
@@ -728,6 +729,7 @@ export default function App() {
               setLogs([]);
               setWaterIntakeMl(0);
             }}
+            onEditProgress={(newAmount) => setWaterIntakeMl(newAmount)}
           />
         </div>
       </main>

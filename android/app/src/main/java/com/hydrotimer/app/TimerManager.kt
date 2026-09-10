@@ -20,6 +20,7 @@ class TimerManager(private val context: Context) {
         const val KEY_NEXT_TRIGGER_TIMESTAMP = "next_trigger_timestamp"
         const val KEY_TODAY_DRUNK_ML = "today_drunk_ml"
         const val KEY_DAILY_TARGET_ML = "daily_target_ml"
+        const val KEY_INTAKE_PER_ALERT_ML = "intake_per_alert_ml"
         const val KEY_MISSED_COUNT = "missed_alerts_count"
         const val KEY_LAST_MISSED_TIME = "last_missed_timestamp"
         const val KEY_QUIET_HOURS_ENABLED = "quiet_hours_enabled"
@@ -174,6 +175,11 @@ class TimerManager(private val context: Context) {
     fun getDailyTargetMl(): Int = prefs.getInt(KEY_DAILY_TARGET_ML, 2500)
     fun setDailyTargetMl(ml: Int) {
         prefs.edit().putInt(KEY_DAILY_TARGET_ML, ml).apply()
+    }
+
+    fun getIntakePerAlertMl(): Int = prefs.getInt(KEY_INTAKE_PER_ALERT_ML, 250)
+    fun setIntakePerAlertMl(ml: Int) {
+        prefs.edit().putInt(KEY_INTAKE_PER_ALERT_ML, ml).apply()
     }
 
     fun recordMissedAlert() {

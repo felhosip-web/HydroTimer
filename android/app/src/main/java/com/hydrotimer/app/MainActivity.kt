@@ -77,9 +77,14 @@ class MainActivity : AppCompatActivity() {
         }
 
         binding.btnLogDrink.setOnClickListener {
-            val total = timerManager.addDrunkMl(250)
+            val intake = timerManager.getIntakePerAlertMl()
+            val total = timerManager.addDrunkMl(intake)
             updateProgress()
-            Toast.makeText(this, "💧 +250 ml rögzítve! (${total} ml)", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "💧 +$intake ml rögzítve! (${total} ml)", Toast.LENGTH_SHORT).show()
+        }
+
+        binding.btnEditIntakeAmount.setOnClickListener {
+            showEditIntakeAmountDialog()
         }
 
         binding.btnDismissMissed.setOnClickListener {
@@ -234,6 +239,31 @@ class MainActivity : AppCompatActivity() {
 
                 updateProgress()
                 Toast.makeText(this, "Adatok frissítve", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("Mégse", null)
+            .show()
+    }
+
+    private fun showEditIntakeAmountDialog() {
+        val input = EditText(this).apply {
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+            hint = "Pl. 250"
+            setText(timerManager.getIntakePerAlertMl().toString())
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("Adag / Jelzés Módosítása")
+            .setMessage("Add meg a folyadék beviteli mennyiséget jelzésenként (ml):")
+            .setView(input)
+            .setPositiveButton("Mentés") { _, _ ->
+                val value = input.text.toString().toIntOrNull()
+                if (value != null && value > 0) {
+                    timerManager.setIntakePerAlertMl(value)
+                    updateUIState()
+                    Toast.makeText(this, "Mennyiség frissítve: $value ml", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(this, "Érvénytelen mennyiség", Toast.LENGTH_SHORT).show()
+                }
             }
             .setNegativeButton("Mégse", null)
             .show()
@@ -404,6 +434,7 @@ class MainActivity : AppCompatActivity() {
             binding.tvTimerCountdown.text = String.format("%02d:00", interval)
             uiCountDownTimer?.cancel()
         }
+        binding.btnLogDrink.text = "+${timerManager.getIntakePerAlertMl()} ml"
         updateProgress()
         updateDurationButtonStyles()
         updateIntervalButtonStyles()
