@@ -117,6 +117,7 @@ const DEFAULT_CONFIG: TimerConfig = {
   intakeMlPerAlert: 250,
   dailyGoalMl: 2500,
   customEvents: DEFAULT_CUSTOM_EVENTS,
+  activeDays: [true, true, true, true, true, true, true],
 };
 
 export default function App() {
@@ -130,6 +131,7 @@ export default function App() {
           ...parsed,
           alertDurationSeconds: Math.max(5, parsed.alertDurationSeconds || 15),
           customEvents: parsed.customEvents?.length ? parsed.customEvents : DEFAULT_CUSTOM_EVENTS,
+          activeDays: parsed.activeDays?.length === 7 ? parsed.activeDays : [true, true, true, true, true, true, true],
         };
       }
       return DEFAULT_CONFIG;
@@ -237,6 +239,25 @@ export default function App() {
 
   // Start Alert Window when timer reaches 0
   const triggerAlertPhase = useCallback(() => {
+    const todayIndex = new Date().getDay();
+    if (config.activeDays && !config.activeDays[todayIndex]) {
+      // If today is not an active day, silently auto-restart if needed
+      if (config.mode === 'interval') {
+        const resetSec = config.intervalMinutes * 60;
+        setRemainingSeconds(resetSec);
+        if (config.autoRestart) {
+          setIsRunning(true);
+        } else {
+          setIsRunning(false);
+        }
+      } else {
+        const resetSec = config.countdownMinutes * 60 + (config.countdownSeconds || 0);
+        setRemainingSeconds(resetSec);
+        setIsRunning(false);
+      }
+      return;
+    }
+
     const alertDuration = Math.max(5, config.alertDurationSeconds || 15);
     setIsAlerting(true);
     setAlertSecondsLeft(alertDuration);

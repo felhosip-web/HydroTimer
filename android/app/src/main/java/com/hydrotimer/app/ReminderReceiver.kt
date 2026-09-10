@@ -22,6 +22,14 @@ class ReminderReceiver : BroadcastReceiver() {
 
         when (intent.action) {
             ACTION_TRIGGER_REMINDER -> {
+                // Check if today is an active day
+                val today = java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_WEEK)
+                if (!timerManager.isDayActive(today)) {
+                    // Silently schedule next occurrence
+                    timerManager.scheduleNextOccurrence()
+                    return
+                }
+
                 // Quiet Hours check (e.g. 23:00 - 07:00 sleep mode)
                 if (timerManager.isInQuietHours()) {
                     // Suppress loud sound & vibration during sleep/quiet period.
