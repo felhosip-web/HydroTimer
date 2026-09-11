@@ -31,6 +31,7 @@ interface DailyStatsProps {
   waterIntakeMl: number;
   onQuickAddWater: (amountMl: number) => void;
   onClearLogs: () => void;
+  onEditProgress?: (newAmount: number) => void;
 }
 
 interface DailyIntakePoint {
@@ -92,6 +93,7 @@ export const DailyStats: React.FC<DailyStatsProps> = ({
   waterIntakeMl,
   onQuickAddWater,
   onClearLogs,
+  onEditProgress,
 }) => {
   const goalPercent = Math.min(100, Math.round((waterIntakeMl / (config.dailyGoalMl || 2500)) * 100));
 
@@ -209,7 +211,24 @@ export const DailyStats: React.FC<DailyStatsProps> = ({
               <Droplets className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-sm font-bold text-white">Napi Hidratációs Cél</h3>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-bold text-white">Napi Hidratációs Cél</h3>
+                <button
+                  onClick={() => {
+                    const result = window.prompt("Add meg a jelenlegi fogyasztást (ml):", waterIntakeMl.toString());
+                    if (result) {
+                      const val = parseInt(result);
+                      if (!isNaN(val) && onEditProgress) {
+                        onEditProgress(val);
+                      }
+                    }
+                  }}
+                  className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors"
+                  title="Fogyasztás módosítása"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-edit-2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+                </button>
+              </div>
               <p className="text-xs text-slate-400">
                 {waterIntakeMl} ml / {config.dailyGoalMl} ml
               </p>

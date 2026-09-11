@@ -524,6 +524,52 @@ export const QuickSettingsModal: React.FC<QuickSettingsModalProps> = ({
               )}
             </div>
 
+            {/* Active Days */}
+            <div className="bg-slate-800/40 border border-slate-800 rounded-2xl p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Clock className="w-4 h-4 text-sky-400" />
+                <div>
+                  <div className="text-xs font-bold text-slate-200">Aktív Napok</div>
+                  <div className="text-[10px] text-slate-400">
+                    Válaszd ki, mely napokon legyen aktív a jelzés
+                  </div>
+                </div>
+              </div>
+              <div className="pt-2 border-t border-slate-700/60 relative group">
+                <select
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white appearance-none cursor-pointer focus:outline-none focus:border-sky-500 transition-colors"
+                  onChange={(e) => {
+                    const idx = parseInt(e.target.value);
+                    const newActiveDays = [...(localConfig.activeDays || [true, true, true, true, true, true, true])];
+                    newActiveDays[idx] = !newActiveDays[idx];
+                    setLocalConfig({ ...localConfig, activeDays: newActiveDays });
+                  }}
+                  value="-1"
+                >
+                  <option value="-1" disabled hidden>Napok kiválasztása ▾</option>
+                  {[
+                    { index: 1, label: 'Hétfő' },
+                    { index: 2, label: 'Kedd' },
+                    { index: 3, label: 'Szerda' },
+                    { index: 4, label: 'Csütörtök' },
+                    { index: 5, label: 'Péntek' },
+                    { index: 6, label: 'Szombat' },
+                    { index: 0, label: 'Vasárnap' },
+                  ].map((day) => {
+                    const isActive = localConfig.activeDays ? localConfig.activeDays[day.index] : true;
+                    return (
+                      <option key={day.index} value={day.index}>
+                        {isActive ? '✓ ' : '  '}{day.label}
+                      </option>
+                    );
+                  })}
+                </select>
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 mt-1 pointer-events-none text-slate-400">
+                   ▾
+                </div>
+              </div>
+            </div>
+
             {/* Goals */}
             <div className="grid grid-cols-2 gap-3">
               <div>

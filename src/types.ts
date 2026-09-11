@@ -29,13 +29,14 @@ export interface TimerConfig {
   alertDurationSeconds: number; // Min 5s, presets: 5, 15, 30 or custom
   soundType: SoundEffectType;
   vibrationPattern: VibrationPatternType;
-  autoRestart: boolean;
+  autoRestart?: boolean;
   quietHoursEnabled: boolean;
   quietHoursStart: string; // "22:00"
   quietHoursEnd: string;   // "07:00"
   intakeMlPerAlert: number;
   dailyGoalMl: number;
   customEvents: CustomEventItem[]; // Maximum 6 events
+  activeDays: boolean[]; // Array of 7 booleans (index 0 = Sunday)
 }
 
 export interface ActivityLog {

@@ -77,9 +77,14 @@ class MainActivity : AppCompatActivity() {
         }
 
         binding.btnLogDrink.setOnClickListener {
-            val total = timerManager.addDrunkMl(250)
+            val intake = timerManager.getIntakePerAlertMl()
+            val total = timerManager.addDrunkMl(intake)
             updateProgress()
-            Toast.makeText(this, "💧 +250 ml rögzítve! (${total} ml)", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "💧 +$intake ml rögzítve! (${total} ml)", Toast.LENGTH_SHORT).show()
+        }
+
+        binding.btnEditIntakeAmount.setOnClickListener {
+            showEditIntakeAmountDialog()
         }
 
         binding.btnDismissMissed.setOnClickListener {
@@ -92,6 +97,8 @@ class MainActivity : AppCompatActivity() {
         binding.btnInterval45m.setOnClickListener { setInterval(45) }
         binding.btnInterval60m.setOnClickListener { setInterval(60) }
         binding.btnIntervalCustom.setOnClickListener { showCustomIntervalDialog() }
+
+        setupActiveDaysUI()
 
         // Alert Duration Quick Buttons: 5s (min), 15s, 30s + Custom input
         binding.btnDuration5s.setOnClickListener { setAlertDuration(5) }
@@ -237,6 +244,60 @@ class MainActivity : AppCompatActivity() {
             }
             .setNegativeButton("Mégse", null)
             .show()
+    }
+
+    private fun showEditIntakeAmountDialog() {
+        val input = EditText(this).apply {
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+            hint = "Pl. 250"
+            setText(timerManager.getIntakePerAlertMl().toString())
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("Adag / Jelzés Módosítása")
+            .setMessage("Add meg a folyadék beviteli mennyiséget jelzésenként (ml):")
+            .setView(input)
+            .setPositiveButton("Mentés") { _, _ ->
+                val value = input.text.toString().toIntOrNull()
+                if (value != null && value > 0) {
+                    timerManager.setIntakePerAlertMl(value)
+                    updateUIState()
+                    Toast.makeText(this, "Mennyiség frissítve: $value ml", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(this, "Érvénytelen mennyiség", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("Mégse", null)
+            .show()
+    }
+
+    private fun setupActiveDaysUI() {
+        binding.btnActiveDaysDropdown.setOnClickListener {
+            val days = timerManager.getActiveDays()
+            // Index mapping: 0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat
+            val options = arrayOf("Hétfő", "Kedd", "Szerda", "Csütörtök", "Péntek", "Szombat", "Vasárnap")
+            val checkedItems = booleanArrayOf(days[1], days[2], days[3], days[4], days[5], days[6], days[0])
+
+            AlertDialog.Builder(this)
+                .setTitle("Aktív Napok")
+                .setMultiChoiceItems(options, checkedItems) { _, which, isChecked ->
+                    checkedItems[which] = isChecked
+                }
+                .setPositiveButton("Mentés") { _, _ ->
+                    val newDays = BooleanArray(7)
+                    newDays[0] = checkedItems[6]
+                    newDays[1] = checkedItems[0]
+                    newDays[2] = checkedItems[1]
+                    newDays[3] = checkedItems[2]
+                    newDays[4] = checkedItems[3]
+                    newDays[5] = checkedItems[4]
+                    newDays[6] = checkedItems[5]
+                    timerManager.setActiveDays(newDays)
+                    Toast.makeText(this, "Aktív napok frissítve", Toast.LENGTH_SHORT).show()
+                }
+                .setNegativeButton("Mégse", null)
+                .show()
+        }
     }
 
     private fun showCustomQuietHoursDialog() {
@@ -404,6 +465,7 @@ class MainActivity : AppCompatActivity() {
             binding.tvTimerCountdown.text = String.format("%02d:00", interval)
             uiCountDownTimer?.cancel()
         }
+        binding.btnLogDrink.text = "+${timerManager.getIntakePerAlertMl()} ml"
         updateProgress()
         updateDurationButtonStyles()
         updateIntervalButtonStyles()
