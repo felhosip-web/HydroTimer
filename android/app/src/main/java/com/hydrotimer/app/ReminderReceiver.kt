@@ -22,6 +22,14 @@ class ReminderReceiver : BroadcastReceiver() {
 
         when (intent.action) {
             ACTION_TRIGGER_REMINDER -> {
+                // Check if today is an active day
+                val today = java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_WEEK)
+                if (!timerManager.isDayActive(today)) {
+                    // Silently schedule next occurrence
+                    timerManager.scheduleNextOccurrence()
+                    return
+                }
+
                 // Quiet Hours check (e.g. 23:00 - 07:00 sleep mode)
                 if (timerManager.isInQuietHours()) {
                     // Suppress loud sound & vibration during sleep/quiet period.
@@ -44,8 +52,9 @@ class ReminderReceiver : BroadcastReceiver() {
                 notificationManager.cancel(NotificationHelper.NOTIFICATION_ID)
 
                 // 2. Log drink
-                val updatedTotal = timerManager.addDrunkMl(250)
-                Toast.makeText(context, "💧 +250 ml rögzítve! Összesen: ${updatedTotal} ml", Toast.LENGTH_SHORT).show()
+                val intake = timerManager.getIntakePerAlertMl()
+                val updatedTotal = timerManager.addDrunkMl(intake)
+                Toast.makeText(context, "💧 +$intake ml rögzítve! Összesen: ${updatedTotal} ml", Toast.LENGTH_SHORT).show()
 
                 // 3. Start next occurrence
                 timerManager.scheduleNextOccurrence()

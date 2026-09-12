@@ -20,8 +20,10 @@ class TimerManager(private val context: Context) {
         const val KEY_NEXT_TRIGGER_TIMESTAMP = "next_trigger_timestamp"
         const val KEY_TODAY_DRUNK_ML = "today_drunk_ml"
         const val KEY_DAILY_TARGET_ML = "daily_target_ml"
+        const val KEY_INTAKE_PER_ALERT_ML = "intake_per_alert_ml"
         const val KEY_MISSED_COUNT = "missed_alerts_count"
         const val KEY_LAST_MISSED_TIME = "last_missed_timestamp"
+        const val KEY_ACTIVE_DAYS = "active_days"
         const val KEY_QUIET_HOURS_ENABLED = "quiet_hours_enabled"
         const val KEY_QUIET_HOURS_START = "quiet_hours_start"
         const val KEY_QUIET_HOURS_END = "quiet_hours_end"
@@ -176,6 +178,11 @@ class TimerManager(private val context: Context) {
         prefs.edit().putInt(KEY_DAILY_TARGET_ML, ml).apply()
     }
 
+    fun getIntakePerAlertMl(): Int = prefs.getInt(KEY_INTAKE_PER_ALERT_ML, 250)
+    fun setIntakePerAlertMl(ml: Int) {
+        prefs.edit().putInt(KEY_INTAKE_PER_ALERT_ML, ml).apply()
+    }
+
     fun recordMissedAlert() {
         val currentCount = prefs.getInt(KEY_MISSED_COUNT, 0) + 1
         prefs.edit()
@@ -194,6 +201,26 @@ class TimerManager(private val context: Context) {
     fun isQuietHoursEnabled(): Boolean = prefs.getBoolean(KEY_QUIET_HOURS_ENABLED, true)
     fun setQuietHoursEnabled(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_QUIET_HOURS_ENABLED, enabled).apply()
+    }
+
+    fun getActiveDays(): BooleanArray {
+        val daysStr = prefs.getString(KEY_ACTIVE_DAYS, "true,true,true,true,true,true,true") ?: "true,true,true,true,true,true,true"
+        val parts = daysStr.split(",")
+        return BooleanArray(7) { i -> if (i < parts.size) parts[i].toBoolean() else true }
+    }
+
+    fun setActiveDays(days: BooleanArray) {
+        val daysStr = days.joinToString(",")
+        prefs.edit().putString(KEY_ACTIVE_DAYS, daysStr).apply()
+    }
+
+    /**
+     * calendarDayOfWeek: 1 = Sunday, 2 = Monday, ..., 7 = Saturday
+     */
+    fun isDayActive(calendarDayOfWeek: Int): Boolean {
+        val index = calendarDayOfWeek - 1
+        val days = getActiveDays()
+        return if (index in days.indices) days[index] else true
     }
 
     fun getQuietHoursStart(): String = prefs.getString(KEY_QUIET_HOURS_START, DEFAULT_QUIET_HOURS_START) ?: DEFAULT_QUIET_HOURS_START
