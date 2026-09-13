@@ -54,6 +54,7 @@ class ReminderReceiver : BroadcastReceiver() {
                 // 2. Log drink
                 val intake = timerManager.getIntakePerAlertMl()
                 val updatedTotal = timerManager.addDrunkMl(intake)
+                timerManager.recordTodayAck()
                 Toast.makeText(context, "💧 +$intake ml rögzítve! Összesen: ${updatedTotal} ml", Toast.LENGTH_SHORT).show()
 
                 // 3. Start next occurrence
@@ -65,6 +66,7 @@ class ReminderReceiver : BroadcastReceiver() {
                 timerManager.cancelAlertTimeout()
                 notificationManager.cancel(NotificationHelper.NOTIFICATION_ID)
 
+                timerManager.recordTodayAck()
                 Toast.makeText(context, "✓ Emlékeztető nyugtázva, következő szakasz elindult.", Toast.LENGTH_SHORT).show()
 
                 // 2. Start next occurrence
@@ -77,6 +79,7 @@ class ReminderReceiver : BroadcastReceiver() {
 
                 // 2. Record missed alert
                 timerManager.recordMissedAlert()
+                timerManager.recordTodayMissed()
 
                 // 3. Post missed warning notification with distinct sound
                 val alertDuration = timerManager.getAlertDurationSeconds()
