@@ -12,6 +12,8 @@ class TimerManager(private val context: Context) {
     private val prefs: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     private val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
 
+    fun getPrefs(): SharedPreferences = prefs
+
     companion object {
         const val PREFS_NAME = "hydro_timer_prefs"
         const val KEY_IS_RUNNING = "is_running"
@@ -23,6 +25,9 @@ class TimerManager(private val context: Context) {
         const val KEY_INTAKE_PER_ALERT_ML = "intake_per_alert_ml"
         const val KEY_MISSED_COUNT = "missed_alerts_count"
         const val KEY_LAST_MISSED_TIME = "last_missed_timestamp"
+        const val KEY_TODAY_MISSED_COUNT = "today_missed_count"
+        const val KEY_TODAY_ACK_COUNT = "today_ack_count"
+        const val KEY_LAST_RESET_DATE = "last_reset_date"
         const val KEY_ACTIVE_DAYS = "active_days"
         const val KEY_QUIET_HOURS_ENABLED = "quiet_hours_enabled"
         const val KEY_QUIET_HOURS_START = "quiet_hours_start"
@@ -163,14 +168,56 @@ class TimerManager(private val context: Context) {
 
     fun getNextTriggerTimestamp(): Long = prefs.getLong(KEY_NEXT_TRIGGER_TIMESTAMP, 0L)
 
-    fun getTodayDrunkMl(): Int = prefs.getInt(KEY_TODAY_DRUNK_ML, 0)
+    private fun getTodayDateString(): String {
+        val calendar = java.util.Calendar.getInstance()
+        return "${calendar.get(java.util.Calendar.YEAR)}-${calendar.get(java.util.Calendar.MONTH)}-${calendar.get(java.util.Calendar.DAY_OF_MONTH)}"
+    }
+
+    fun checkDailyReset() {
+        val today = getTodayDateString()
+        val lastReset = prefs.getString(KEY_LAST_RESET_DATE, "")
+        if (today != lastReset) {
+            prefs.edit()
+                .putInt(KEY_TODAY_DRUNK_ML, 0)
+                .putInt(KEY_TODAY_MISSED_COUNT, 0)
+                .putInt(KEY_TODAY_ACK_COUNT, 0)
+                .putString(KEY_LAST_RESET_DATE, today)
+                .apply()
+        }
+    }
+
+    fun getTodayDrunkMl(): Int {
+        checkDailyReset()
+        return prefs.getInt(KEY_TODAY_DRUNK_ML, 0)
+    }
     fun setTodayDrunkMl(ml: Int) {
+        checkDailyReset()
         prefs.edit().putInt(KEY_TODAY_DRUNK_ML, ml).apply()
     }
     fun addDrunkMl(ml: Int): Int {
         val current = getTodayDrunkMl() + ml
         setTodayDrunkMl(current)
         return current
+    }
+
+    fun getTodayMissedCount(): Int {
+        checkDailyReset()
+        return prefs.getInt(KEY_TODAY_MISSED_COUNT, 0)
+    }
+    fun recordTodayMissed() {
+        checkDailyReset()
+        val current = getTodayMissedCount() + 1
+        prefs.edit().putInt(KEY_TODAY_MISSED_COUNT, current).apply()
+    }
+
+    fun getTodayAckCount(): Int {
+        checkDailyReset()
+        return prefs.getInt(KEY_TODAY_ACK_COUNT, 0)
+    }
+    fun recordTodayAck() {
+        checkDailyReset()
+        val current = getTodayAckCount() + 1
+        prefs.edit().putInt(KEY_TODAY_ACK_COUNT, current).apply()
     }
 
     fun getDailyTargetMl(): Int = prefs.getInt(KEY_DAILY_TARGET_ML, 2500)

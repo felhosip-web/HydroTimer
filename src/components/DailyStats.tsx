@@ -97,6 +97,22 @@ export const DailyStats: React.FC<DailyStatsProps> = ({
 }) => {
   const goalPercent = Math.min(100, Math.round((waterIntakeMl / (config.dailyGoalMl || 2500)) * 100));
 
+  const remainingToday = Math.max(0, (config.dailyGoalMl || 2500) - waterIntakeMl);
+
+  // Compute today's logs for quick stats
+  const todayLogs = useMemo(() => {
+    const today = new Date();
+    return logs.filter((log) => {
+      const logDate = new Date(log.timestamp);
+      return logDate.getDate() === today.getDate() &&
+             logDate.getMonth() === today.getMonth() &&
+             logDate.getFullYear() === today.getFullYear();
+    });
+  }, [logs]);
+
+  const todayAckCount = todayLogs.filter(log => !log.missed).length;
+  const todayMissedCount = todayLogs.filter(log => log.missed).length;
+
   // Sync today's live intake into persistent 7-day history storage
   useEffect(() => {
     try {
@@ -203,6 +219,44 @@ export const DailyStats: React.FC<DailyStatsProps> = ({
 
   return (
     <div className="bg-slate-900/70 border border-slate-800 rounded-3xl p-5 backdrop-blur-sm space-y-5">
+      {/* Daily Quick Summary Grid (Sync with Android App) */}
+      <div className="mb-2">
+        <h4 className="text-xs font-bold text-white mb-2 flex items-center gap-1.5">
+          <BarChart3 className="w-4 h-4 text-sky-400" />
+          Mai Statisztika
+        </h4>
+
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-2.5 text-center flex flex-col items-center justify-center">
+            <div className="text-[10px] text-slate-400 mb-0.5 uppercase tracking-wider font-semibold">Megivott</div>
+            <div className="text-base font-bold font-mono text-emerald-400">
+              {waterIntakeMl} <span className="text-[10px] font-sans">ml</span>
+            </div>
+          </div>
+
+          <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-2.5 text-center flex flex-col items-center justify-center">
+            <div className="text-[10px] text-slate-400 mb-0.5 uppercase tracking-wider font-semibold">Hátralévő</div>
+            <div className="text-base font-bold font-mono text-sky-400">
+              {remainingToday} <span className="text-[10px] font-sans">ml</span>
+            </div>
+          </div>
+
+          <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-2.5 text-center flex flex-col items-center justify-center">
+            <div className="text-[10px] text-slate-400 mb-0.5 uppercase tracking-wider font-semibold">Nyugtázott</div>
+            <div className="text-base font-bold text-white">
+              {todayAckCount}
+            </div>
+          </div>
+
+          <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-2.5 text-center flex flex-col items-center justify-center">
+            <div className="text-[10px] text-slate-400 mb-0.5 uppercase tracking-wider font-semibold">Elmulasztott</div>
+            <div className="text-base font-bold text-rose-400">
+              {todayMissedCount}
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Daily Goal Header */}
       <div>
         <div className="flex items-center justify-between mb-2">

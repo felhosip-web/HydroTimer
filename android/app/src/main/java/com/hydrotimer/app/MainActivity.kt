@@ -2,6 +2,7 @@ package com.hydrotimer.app
 
 import android.Manifest
 import android.content.Intent
+import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -24,6 +25,18 @@ class MainActivity : AppCompatActivity() {
     private lateinit var timerManager: TimerManager
     private var uiCountDownTimer: CountDownTimer? = null
 
+    private val prefChangeListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key == TimerManager.KEY_NEXT_TRIGGER_TIMESTAMP ||
+            key == TimerManager.KEY_TODAY_DRUNK_ML ||
+            key == TimerManager.KEY_TODAY_MISSED_COUNT ||
+            key == TimerManager.KEY_TODAY_ACK_COUNT ||
+            key == TimerManager.KEY_IS_RUNNING) {
+            runOnUiThread {
+                updateUIState()
+            }
+        }
+    }
+
     companion object {
         private const val PERMISSION_REQUEST_POST_NOTIFICATIONS = 101
     }
@@ -35,6 +48,7 @@ class MainActivity : AppCompatActivity() {
 
         timerManager = TimerManager(this)
         NotificationHelper.createNotificationChannel(this)
+        timerManager.getPrefs().registerOnSharedPreferenceChangeListener(prefChangeListener)
 
         checkNotificationPermission()
         checkBatteryOptimization()
@@ -475,12 +489,36 @@ class MainActivity : AppCompatActivity() {
 
     private fun startUiCountDown() {
         uiCountDownTimer?.cancel()
+
+        binding.tvTimerCountdown.setTextColor(ContextCompat.getColor(this, R.color.text_primary))
+
         val nextTime = timerManager.getNextTriggerTimestamp()
-        val millisRemaining = nextTime - System.currentTimeMillis()
+        var millisRemaining = nextTime - System.currentTimeMillis()
+
+        val alertDurationMillis = timerManager.getAlertDurationSeconds() * 1000L
 
         if (millisRemaining <= 0) {
-            binding.tvTimerCountdown.text = "00:00"
-            return
+            val millisPast = -millisRemaining
+            if (millisPast < alertDurationMillis) {
+                // We are in the alert phase!
+                binding.tvTimerCountdown.text = "RIASZTÁS"
+                binding.tvTimerCountdown.setTextColor(android.graphics.Color.parseColor("#F59E0B")) // Amber
+
+                // Set a timer for the remaining alert duration so we can reset UI after it finishes
+                val alertMillisRemaining = alertDurationMillis - millisPast
+                uiCountDownTimer = object : CountDownTimer(alertMillisRemaining, 1000) {
+                    override fun onTick(millisUntilFinished: Long) {}
+                    override fun onFinish() {
+                        if (timerManager.isTimerRunning()) {
+                            updateUIState()
+                        }
+                    }
+                }.start()
+                return
+            } else {
+                binding.tvTimerCountdown.text = "00:00"
+                return
+            }
         }
 
         uiCountDownTimer = object : CountDownTimer(millisRemaining, 1000) {
@@ -492,7 +530,6 @@ class MainActivity : AppCompatActivity() {
             }
 
             override fun onFinish() {
-                binding.tvTimerCountdown.text = "00:00"
                 if (timerManager.isTimerRunning()) {
                     updateUIState()
                 }
@@ -504,6 +541,15 @@ class MainActivity : AppCompatActivity() {
         val drunk = timerManager.getTodayDrunkMl()
         val target = timerManager.getDailyTargetMl()
         binding.tvDailyProgress.text = "Napi fogyasztás: $drunk / $target ml"
+
+        val missed = timerManager.getTodayMissedCount()
+        val ack = timerManager.getTodayAckCount()
+        val remaining = Math.max(0, target - drunk)
+
+        binding.tvStatsDrunk.text = "$drunk ml"
+        binding.tvStatsRemaining.text = "$remaining ml"
+        binding.tvStatsAck.text = "$ack"
+        binding.tvStatsMissed.text = "$missed"
     }
 
     private fun checkNotificationPermission() {
@@ -530,5 +576,6 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         uiCountDownTimer?.cancel()
+        timerManager.getPrefs().unregisterOnSharedPreferenceChangeListener(prefChangeListener)
     }
 }
