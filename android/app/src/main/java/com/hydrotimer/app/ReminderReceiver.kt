@@ -6,7 +6,6 @@ import android.content.Intent
 import android.widget.Toast
 
 class ReminderReceiver : BroadcastReceiver() {
-
     companion object {
         const val ALARM_REQUEST_CODE = 2001
         const val TIMEOUT_REQUEST_CODE = 2002
@@ -18,77 +17,42 @@ class ReminderReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         val timerManager = TimerManager(context)
-        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
-
         when (intent.action) {
             ACTION_TRIGGER_REMINDER -> {
-                // Check if today is an active day
+                if (!timerManager.isTimerRunning()) return
                 val today = java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_WEEK)
-                if (!timerManager.isDayActive(today)) {
-                    // Silently schedule next occurrence
+                if (!timerManager.isDayActive(today) || timerManager.isInQuietHours()) {
                     timerManager.scheduleNextOccurrence()
                     return
                 }
-
-                // Quiet Hours check (e.g. 23:00 - 07:00 sleep mode)
-                if (timerManager.isInQuietHours()) {
-                    // Suppress loud sound & vibration during sleep/quiet period.
-                    // Automatically schedule the next occurrence silently!
-                    timerManager.scheduleNextOccurrence()
-                    return
-                }
-
-                // 1. Show notification (which mirrors to Honor Watch / Bluetooth band)
                 NotificationHelper.showWaterReminder(context)
-
-                // 2. Schedule timeout for acknowledgment
-                val alertDurationSeconds = timerManager.getAlertDurationSeconds()
-                timerManager.scheduleAlertTimeout(alertDurationSeconds)
+                timerManager.scheduleAlertTimeout(timerManager.getAlertDurationSeconds())
             }
-
             ACTION_LOG_DRINK -> {
-                // 1. Cancel pending timeout alarm
                 timerManager.cancelAlertTimeout()
-                notificationManager.cancel(NotificationHelper.NOTIFICATION_ID)
-
-                // 2. Log drink
+                NotificationHelper.cancelAlertNotifications(context)
                 val intake = timerManager.getIntakePerAlertMl()
-                val updatedTotal = timerManager.addDrunkMl(intake)
+                val total = timerManager.addDrunkMl(intake)
                 timerManager.recordTodayAck()
-                Toast.makeText(context, "💧 +$intake ml rögzítve! Összesen: ${updatedTotal} ml", Toast.LENGTH_SHORT).show()
-
-                // 3. Start next occurrence
+                Toast.makeText(context, "💧 +$intake ml rögzítve! Összesen: ${total} ml", Toast.LENGTH_SHORT).show()
                 timerManager.scheduleNextOccurrence()
             }
-
             ACTION_ACKNOWLEDGE -> {
-                // 1. Cancel pending timeout alarm
                 timerManager.cancelAlertTimeout()
-                notificationManager.cancel(NotificationHelper.NOTIFICATION_ID)
-
+                NotificationHelper.cancelAlertNotifications(context)
                 timerManager.recordTodayAck()
                 Toast.makeText(context, "✓ Emlékeztető nyugtázva, következő szakasz elindult.", Toast.LENGTH_SHORT).show()
-
-                // 2. Start next occurrence
                 timerManager.scheduleNextOccurrence()
             }
-
             ACTION_ALERT_TIMEOUT -> {
-                // 1. User did NOT acknowledge within the configured alertDurationSeconds
-                notificationManager.cancel(NotificationHelper.NOTIFICATION_ID)
-
-                // 2. Record missed alert
+                if (!timerManager.isTimerRunning()) return
+                timerManager.cancelAlertTimeout()
+                NotificationHelper.cancelAlertNotifications(context)
                 timerManager.recordMissedAlert()
                 timerManager.recordTodayMissed()
-
-                // 3. Post missed warning notification with distinct sound
-                val alertDuration = timerManager.getAlertDurationSeconds()
-                NotificationHelper.showMissedAlertNotification(context, alertDuration)
-
-                // 4. Automatically advance to next period as requested!
+                NotificationHelper.showMissedAlertNotification(context, timerManager.getAlertDurationSeconds())
                 timerManager.scheduleNextOccurrence()
             }
         }
     }
 }
-
