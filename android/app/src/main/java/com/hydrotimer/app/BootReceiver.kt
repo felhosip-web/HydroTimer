@@ -9,9 +9,12 @@ class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action == Intent.ACTION_BOOT_COMPLETED || intent.action == "android.intent.action.QUICKBOOT_POWERON") {
             val timerManager = TimerManager(context)
-            if (timerManager.isTimerRunning()) {
-                // Restore scheduled alarms after phone restarts
-                timerManager.scheduleNextOccurrence()
+            val snapshot = timerManager.getSnapshot()
+            if (snapshot.state != TimerState.STOPPED) {
+                timerManager.dispatch(
+                    TimerEvent(TimerEventType.RECOVER, timestamp = System.currentTimeMillis()),
+                    System.currentTimeMillis()
+                )
             }
         }
     }

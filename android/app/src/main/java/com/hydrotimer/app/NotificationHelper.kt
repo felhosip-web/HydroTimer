@@ -71,17 +71,36 @@ object NotificationHelper {
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
     )
 
-    fun showWaterReminder(context: Context, customTitle: String? = null, customBody: String? = null) {
+    fun showWaterReminder(
+        context: Context,
+        customTitle: String? = null,
+        customBody: String? = null,
+        timerGeneration: Long? = null,
+        alertId: Long? = null
+    ) {
+        val drinkIntent = Intent(context, ReminderReceiver::class.java).apply {
+            action = ReminderReceiver.ACTION_LOG_DRINK
+            if (timerGeneration != null) putExtra(TimerManager.EXTRA_TIMER_GENERATION, timerGeneration)
+            if (alertId != null) putExtra(TimerManager.EXTRA_ALERT_ID, alertId)
+        }
         val drinkPendingIntent = PendingIntent.getBroadcast(
-            context, 1, Intent(context, ReminderReceiver::class.java).setAction(ReminderReceiver.ACTION_LOG_DRINK),
+            context, 1, drinkIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
+
+        val ackIntent = Intent(context, ReminderReceiver::class.java).apply {
+            action = ReminderReceiver.ACTION_ACKNOWLEDGE
+            if (timerGeneration != null) putExtra(TimerManager.EXTRA_TIMER_GENERATION, timerGeneration)
+            if (alertId != null) putExtra(TimerManager.EXTRA_ALERT_ID, alertId)
+        }
         val ackPendingIntent = PendingIntent.getBroadcast(
-            context, 2, Intent(context, ReminderReceiver::class.java).setAction(ReminderReceiver.ACTION_ACKNOWLEDGE),
+            context, 2, ackIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
+
         val title = customTitle ?: context.getString(R.string.reminder_title)
         val body = customBody ?: context.getString(R.string.reminder_body)
+
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_water_drop)
             .setContentTitle(title).setContentText(body)
@@ -100,12 +119,17 @@ object NotificationHelper {
                 NotificationCompat.Action(R.drawable.ic_water_drop, context.getString(R.string.action_drink), drinkPendingIntent)
             ).addAction(NotificationCompat.Action(R.drawable.ic_water_drop, context.getString(R.string.action_acknowledge), ackPendingIntent)))
             .build()
-        (context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).notify(NOTIFICATION_ID, notification)
+
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.notify(NOTIFICATION_ID, notification)
     }
 
     fun showMissedAlertNotification(context: Context, alertDurationSeconds: Int) {
+        val drinkIntent = Intent(context, ReminderReceiver::class.java).apply {
+            action = ReminderReceiver.ACTION_LOG_DRINK
+        }
         val drinkPendingIntent = PendingIntent.getBroadcast(
-            context, 4, Intent(context, ReminderReceiver::class.java).setAction(ReminderReceiver.ACTION_LOG_DRINK),
+            context, 4, drinkIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val body = context.getString(R.string.missed_alert_body, alertDurationSeconds)
@@ -122,6 +146,7 @@ object NotificationHelper {
             .extend(NotificationCompat.WearableExtender().addAction(
                 NotificationCompat.Action(R.drawable.ic_water_drop, context.getString(R.string.action_drink), drinkPendingIntent)
             )).build()
+
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         manager.cancel(NOTIFICATION_ID)
         manager.notify(MISSED_NOTIFICATION_ID, notification)
