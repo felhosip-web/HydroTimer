@@ -3,6 +3,7 @@ package com.hydrotimer.app
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.widget.Toast
 
 class ReminderReceiver : BroadcastReceiver() {
     companion object {
@@ -10,6 +11,7 @@ class ReminderReceiver : BroadcastReceiver() {
         const val TIMEOUT_REQUEST_CODE = 2002
         const val ACTION_TRIGGER_REMINDER = "com.hydrotimer.app.ACTION_TRIGGER_REMINDER"
         const val ACTION_LOG_DRINK = "com.hydrotimer.app.ACTION_LOG_DRINK"
+        const val ACTION_LOG_MISSED_DRINK = "com.hydrotimer.app.ACTION_LOG_MISSED_DRINK"
         const val ACTION_ACKNOWLEDGE = "com.hydrotimer.app.ACTION_ACKNOWLEDGE"
         const val ACTION_ALERT_TIMEOUT = "com.hydrotimer.app.ACTION_ALERT_TIMEOUT"
     }
@@ -36,6 +38,13 @@ class ReminderReceiver : BroadcastReceiver() {
                     TimerEvent(TimerEventType.DRINK, timerGeneration = gen, alertId = alertId, timestamp = now),
                     now
                 )
+            }
+            ACTION_LOG_MISSED_DRINK -> {
+                val intake = timerManager.getIntakePerAlertMl()
+                val total = timerManager.addDrunkMl(intake)
+                timerManager.recordTodayAck()
+                NotificationHelper.cancelAlertNotifications(context)
+                Toast.makeText(context, "💧 +$intake ml rögzítve! Összesen: ${total} ml", Toast.LENGTH_SHORT).show()
             }
             ACTION_ACKNOWLEDGE -> {
                 timerManager.dispatch(

@@ -118,7 +118,7 @@ class TimerManager(private val context: Context) {
         if (snapshot.alertDeadlineAt != null) editor.putLong(KEY_ALERT_DEADLINE_TIMESTAMP, snapshot.alertDeadlineAt) else editor.remove(KEY_ALERT_DEADLINE_TIMESTAMP)
 
         editor.putBoolean(KEY_IS_RUNNING, snapshot.state != TimerState.STOPPED)
-        editor.apply()
+        editor.commit()
     }
 
     fun getConfig(): EngineConfig {
@@ -153,8 +153,8 @@ class TimerManager(private val context: Context) {
                 is TimerEffect.PersistState -> saveSnapshot(effect.snapshot)
                 is TimerEffect.ScheduleTimer -> scheduleAlarmAt(effect.triggerAtMillis, effect.timerGeneration)
                 is TimerEffect.ScheduleAlertTimeout -> scheduleAlertTimeoutAt(effect.deadlineAtMillis, effect.timerGeneration, effect.alertId)
-                is TimerEffect.CancelTimer -> cancelAlarm()
-                is TimerEffect.CancelAlertTimeout -> cancelAlertTimeout()
+                is TimerEffect.CancelTimer -> cancelAlarm(effect.timerGeneration)
+                is TimerEffect.CancelAlertTimeout -> cancelAlertTimeout(effect.timerGeneration, effect.alertId)
                 is TimerEffect.ShowReminder -> NotificationHelper.showWaterReminder(context, effect.title, effect.body, effect.timerGeneration, effect.alertId)
                 is TimerEffect.CancelReminder -> NotificationHelper.cancelAlertNotifications(context)
                 is TimerEffect.ShowMissedNotification -> NotificationHelper.showMissedAlertNotification(context, effect.alertDurationSeconds)
@@ -169,13 +169,14 @@ class TimerManager(private val context: Context) {
     }
 
     private fun scheduleAlarmAt(triggerAtMillis: Long, timerGeneration: Long) {
+        val reqCode = NotificationHelper.generateRequestCode(10, timerGeneration, null)
         val intent = Intent(context, ReminderReceiver::class.java).apply {
             action = ReminderReceiver.ACTION_TRIGGER_REMINDER
             putExtra(EXTRA_TIMER_GENERATION, timerGeneration)
         }
         val pi = PendingIntent.getBroadcast(
             context,
-            ReminderReceiver.ALARM_REQUEST_CODE,
+            reqCode,
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
@@ -186,13 +187,16 @@ class TimerManager(private val context: Context) {
         }
     }
 
-    private fun cancelAlarm() {
+    private fun cancelAlarm(timerGeneration: Long? = null) {
+        val snapshot = getSnapshot()
+        val gen = timerGeneration ?: snapshot.timerGeneration
+        val reqCode = NotificationHelper.generateRequestCode(10, gen, null)
         val intent = Intent(context, ReminderReceiver::class.java).apply {
             action = ReminderReceiver.ACTION_TRIGGER_REMINDER
         }
         val pi = PendingIntent.getBroadcast(
             context,
-            ReminderReceiver.ALARM_REQUEST_CODE,
+            reqCode,
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
@@ -200,6 +204,7 @@ class TimerManager(private val context: Context) {
     }
 
     private fun scheduleAlertTimeoutAt(deadlineAtMillis: Long, timerGeneration: Long, alertId: Long) {
+        val reqCode = NotificationHelper.generateRequestCode(20, timerGeneration, alertId)
         val intent = Intent(context, ReminderReceiver::class.java).apply {
             action = ReminderReceiver.ACTION_ALERT_TIMEOUT
             putExtra(EXTRA_TIMER_GENERATION, timerGeneration)
@@ -207,7 +212,7 @@ class TimerManager(private val context: Context) {
         }
         val pi = PendingIntent.getBroadcast(
             context,
-            ReminderReceiver.TIMEOUT_REQUEST_CODE,
+            reqCode,
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
@@ -218,13 +223,17 @@ class TimerManager(private val context: Context) {
         }
     }
 
-    fun cancelAlertTimeout() {
+    fun cancelAlertTimeout(timerGeneration: Long? = null, alertId: Long? = null) {
+        val snapshot = getSnapshot()
+        val gen = timerGeneration ?: snapshot.timerGeneration
+        val id = alertId ?: snapshot.alertId
+        val reqCode = NotificationHelper.generateRequestCode(20, gen, id)
         val intent = Intent(context, ReminderReceiver::class.java).apply {
             action = ReminderReceiver.ACTION_ALERT_TIMEOUT
         }
         val pi = PendingIntent.getBroadcast(
             context,
-            ReminderReceiver.TIMEOUT_REQUEST_CODE,
+            reqCode,
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
@@ -253,63 +262,62 @@ class TimerManager(private val context: Context) {
         dispatch(TimerEvent(TimerEventType.TIMER_TRIGGER, timerGeneration = snapshot.timerGeneration, timestamp = System.currentTimeMillis()))
     }
 
-    fun scheduleAlertTimeout(seconds: Int = getAlertDurationSeconds()) {
+    fun scheduleAlertTimeout() {
         val snapshot = getSnapshot()
-        if (snapshot.state == TimerState.ALERT_ACTIVE && snapshot.alertId != null) {
-            val deadlineAt = System.currentTimeMillis() + Math.max(5, seconds) * 1000L
-            scheduleAlertTimeoutAt(deadlineAt, snapshot.timerGeneration, snapshot.alertId)
+        if (snapshot.state == TimerState.ALERT_ACTIVE && snapshot.alertId != null && snapshot.alertDeadlineAt != null) {
+            scheduleAlertTimeoutAt(snapshot.alertDeadlineAt, snapshot.timerGeneration, snapshot.alertId)
         }
     }
 
     fun isTimerRunning(): Boolean = getSnapshot().state != TimerState.STOPPED
 
     fun getTimerMode(): String = prefs.getString(KEY_TIMER_MODE, "interval") ?: "interval"
-    fun setTimerMode(mode: String) { prefs.edit().putString(KEY_TIMER_MODE, mode).apply() }
+    fun setTimerMode(mode: String) { prefs.edit().putString(KEY_TIMER_MODE, mode).commit() }
     fun getCurrentEventTitle(): String = prefs.getString(KEY_EVENT_TITLE, "Vízivás") ?: "Vízivás"
-    fun setCurrentEventTitle(title: String) { prefs.edit().putString(KEY_EVENT_TITLE, title).apply() }
+    fun setCurrentEventTitle(title: String) { prefs.edit().putString(KEY_EVENT_TITLE, title).commit() }
 
     fun isClockAlignedInterval(): Boolean = prefs.getString(KEY_INTERVAL_MODE, "free") == "clock"
-    fun setClockAlignedInterval(enabled: Boolean) { prefs.edit().putString(KEY_INTERVAL_MODE, if (enabled) "clock" else "free").apply() }
+    fun setClockAlignedInterval(enabled: Boolean) { prefs.edit().putString(KEY_INTERVAL_MODE, if (enabled) "clock" else "free").commit() }
     fun getClockIntervalMinutes(): Int = prefs.getInt(KEY_CLOCK_INTERVAL_MINUTES, DEFAULT_CLOCK_INTERVAL_MINUTES)
-    fun setClockIntervalMinutes(minutes: Int) { prefs.edit().putInt(KEY_CLOCK_INTERVAL_MINUTES, minutes.coerceIn(30, 90)).apply() }
+    fun setClockIntervalMinutes(minutes: Int) { prefs.edit().putInt(KEY_CLOCK_INTERVAL_MINUTES, minutes.coerceIn(30, 90)).commit() }
 
     fun getIntervalMinutes() = prefs.getInt(KEY_INTERVAL_MINUTES, DEFAULT_INTERVAL_MINUTES)
-    fun setIntervalMinutes(minutes: Int) { prefs.edit().putInt(KEY_INTERVAL_MINUTES, minutes.coerceAtLeast(1)).apply() }
+    fun setIntervalMinutes(minutes: Int) { prefs.edit().putInt(KEY_INTERVAL_MINUTES, minutes.coerceAtLeast(1)).commit() }
     fun getCountdownMinutes() = prefs.getInt(KEY_COUNTDOWN_MINUTES, DEFAULT_COUNTDOWN_MINUTES)
-    fun setCountdownMinutes(minutes: Int) { prefs.edit().putInt(KEY_COUNTDOWN_MINUTES, minutes.coerceAtLeast(0)).apply() }
+    fun setCountdownMinutes(minutes: Int) { prefs.edit().putInt(KEY_COUNTDOWN_MINUTES, minutes.coerceAtLeast(0)).commit() }
     fun getCountdownSeconds() = prefs.getInt(KEY_COUNTDOWN_SECONDS, 0)
-    fun setCountdownSeconds(seconds: Int) { prefs.edit().putInt(KEY_COUNTDOWN_SECONDS, seconds.coerceIn(0, 59)).apply() }
+    fun setCountdownSeconds(seconds: Int) { prefs.edit().putInt(KEY_COUNTDOWN_SECONDS, seconds.coerceIn(0, 59)).commit() }
 
     fun getAlertDurationSeconds() = prefs.getInt(KEY_ALERT_DURATION_SECONDS, DEFAULT_ALERT_DURATION_SECONDS).coerceAtLeast(5)
-    fun setAlertDurationSeconds(seconds: Int) { prefs.edit().putInt(KEY_ALERT_DURATION_SECONDS, seconds.coerceAtLeast(5)).apply() }
+    fun setAlertDurationSeconds(seconds: Int) { prefs.edit().putInt(KEY_ALERT_DURATION_SECONDS, seconds.coerceAtLeast(5)).commit() }
     fun getNextTriggerTimestamp() = getSnapshot().nextTriggerAt ?: 0L
 
     private fun today(): String { val c = Calendar.getInstance(); return "${c.get(Calendar.YEAR)}-${c.get(Calendar.MONTH)}-${c.get(Calendar.DAY_OF_MONTH)}" }
-    fun checkDailyReset() { if (prefs.getString(KEY_LAST_RESET_DATE, "") != today()) prefs.edit().putInt(KEY_TODAY_DRUNK_ML, 0).putInt(KEY_TODAY_MISSED_COUNT, 0).putInt(KEY_TODAY_ACK_COUNT, 0).putString(KEY_LAST_RESET_DATE, today()).apply() }
+    fun checkDailyReset() { if (prefs.getString(KEY_LAST_RESET_DATE, "") != today()) prefs.edit().putInt(KEY_TODAY_DRUNK_ML, 0).putInt(KEY_TODAY_MISSED_COUNT, 0).putInt(KEY_TODAY_ACK_COUNT, 0).putString(KEY_LAST_RESET_DATE, today()).commit() }
     fun getTodayDrunkMl() = prefs.getInt(KEY_TODAY_DRUNK_ML, 0).also { checkDailyReset() }
-    fun setTodayDrunkMl(ml: Int) { checkDailyReset(); prefs.edit().putInt(KEY_TODAY_DRUNK_ML, ml.coerceAtLeast(0)).apply() }
+    fun setTodayDrunkMl(ml: Int) { checkDailyReset(); prefs.edit().putInt(KEY_TODAY_DRUNK_ML, ml.coerceAtLeast(0)).commit() }
     fun addDrunkMl(ml: Int): Int { val updated = getTodayDrunkMl() + ml; setTodayDrunkMl(updated); return updated }
     fun getTodayMissedCount() = prefs.getInt(KEY_TODAY_MISSED_COUNT, 0).also { checkDailyReset() }
-    fun recordTodayMissed() { checkDailyReset(); prefs.edit().putInt(KEY_TODAY_MISSED_COUNT, getTodayMissedCount() + 1).apply() }
+    fun recordTodayMissed() { checkDailyReset(); prefs.edit().putInt(KEY_TODAY_MISSED_COUNT, getTodayMissedCount() + 1).commit() }
     fun getTodayAckCount() = prefs.getInt(KEY_TODAY_ACK_COUNT, 0).also { checkDailyReset() }
-    fun recordTodayAck() { checkDailyReset(); prefs.edit().putInt(KEY_TODAY_ACK_COUNT, getTodayAckCount() + 1).apply() }
+    fun recordTodayAck() { checkDailyReset(); prefs.edit().putInt(KEY_TODAY_ACK_COUNT, getTodayAckCount() + 1).commit() }
     fun getDailyTargetMl() = prefs.getInt(KEY_DAILY_TARGET_ML, 2500)
-    fun setDailyTargetMl(ml: Int) { prefs.edit().putInt(KEY_DAILY_TARGET_ML, ml).apply() }
+    fun setDailyTargetMl(ml: Int) { prefs.edit().putInt(KEY_DAILY_TARGET_ML, ml).commit() }
     fun getIntakePerAlertMl() = prefs.getInt(KEY_INTAKE_PER_ALERT_ML, 250)
-    fun setIntakePerAlertMl(ml: Int) { prefs.edit().putInt(KEY_INTAKE_PER_ALERT_ML, ml).apply() }
-    fun recordMissedAlert() { prefs.edit().putInt(KEY_MISSED_COUNT, getMissedAlertsCount() + 1).putLong(KEY_LAST_MISSED_TIME, System.currentTimeMillis()).apply() }
+    fun setIntakePerAlertMl(ml: Int) { prefs.edit().putInt(KEY_INTAKE_PER_ALERT_ML, ml).commit() }
+    fun recordMissedAlert() { prefs.edit().putInt(KEY_MISSED_COUNT, getMissedAlertsCount() + 1).putLong(KEY_LAST_MISSED_TIME, System.currentTimeMillis()).commit() }
     fun getMissedAlertsCount() = prefs.getInt(KEY_MISSED_COUNT, 0)
     fun getLastMissedTimestamp() = prefs.getLong(KEY_LAST_MISSED_TIME, 0L)
-    fun clearMissedAlerts() { prefs.edit().putInt(KEY_MISSED_COUNT, 0).putLong(KEY_LAST_MISSED_TIME, 0L).apply() }
+    fun clearMissedAlerts() { prefs.edit().putInt(KEY_MISSED_COUNT, 0).putLong(KEY_LAST_MISSED_TIME, 0L).commit() }
 
     fun isQuietHoursEnabled() = prefs.getBoolean(KEY_QUIET_HOURS_ENABLED, true)
-    fun setQuietHoursEnabled(enabled: Boolean) { prefs.edit().putBoolean(KEY_QUIET_HOURS_ENABLED, enabled).apply() }
+    fun setQuietHoursEnabled(enabled: Boolean) { prefs.edit().putBoolean(KEY_QUIET_HOURS_ENABLED, enabled).commit() }
     fun getActiveDays(): BooleanArray = (prefs.getString(KEY_ACTIVE_DAYS, "true,true,true,true,true,true,true") ?: "true,true,true,true,true,true,true").split(",").let { p -> BooleanArray(7) { i -> p.getOrNull(i)?.toBoolean() ?: true } }
-    fun setActiveDays(days: BooleanArray) { prefs.edit().putString(KEY_ACTIVE_DAYS, days.joinToString(",")).apply() }
+    fun setActiveDays(days: BooleanArray) { prefs.edit().putString(KEY_ACTIVE_DAYS, days.joinToString(",")).commit() }
     fun isDayActive(day: Int) = getActiveDays().getOrElse(day - 1) { true }
     fun getQuietHoursStart() = prefs.getString(KEY_QUIET_HOURS_START, DEFAULT_QUIET_HOURS_START) ?: DEFAULT_QUIET_HOURS_START
-    fun setQuietHoursStart(time: String) { prefs.edit().putString(KEY_QUIET_HOURS_START, time).apply() }
+    fun setQuietHoursStart(time: String) { prefs.edit().putString(KEY_QUIET_HOURS_START, time).commit() }
     fun getQuietHoursEnd() = prefs.getString(KEY_QUIET_HOURS_END, DEFAULT_QUIET_HOURS_END) ?: DEFAULT_QUIET_HOURS_END
-    fun setQuietHoursEnd(time: String) { prefs.edit().putString(KEY_QUIET_HOURS_END, time).apply() }
+    fun setQuietHoursEnd(time: String) { prefs.edit().putString(KEY_QUIET_HOURS_END, time).commit() }
     fun isInQuietHours(): Boolean = TimerDomainEngine.isInQuietHoursAt(System.currentTimeMillis(), getQuietHoursStart(), getQuietHoursEnd())
 }

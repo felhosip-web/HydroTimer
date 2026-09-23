@@ -258,7 +258,12 @@ object TimerDomainEngine {
         }
 
         val activeAlertId = snapshot.alertId
-        val durationSec = Math.max(5, config.alertDurationSeconds)
+        val durationMs = if (snapshot.alertDeadlineAt != null && snapshot.alertStartedAt != null) {
+            snapshot.alertDeadlineAt - snapshot.alertStartedAt
+        } else {
+            Math.max(5, config.alertDurationSeconds) * 1000L
+        }
+        val durationSec = Math.max(5, (durationMs / 1000L).toInt())
         val isCountdown = config.mode == "countdown"
 
         if (isCountdown) {
@@ -325,7 +330,6 @@ object TimerDomainEngine {
                         )
                         processEvent(snapshot, triggerEvent, config, now)
                     } else {
-                        // Long downtime recovery: advance to next valid future occurrence
                         val nextTriggerAt = calculateNextTriggerAt(now, config)
                         val newSnapshot = snapshot.copy(nextTriggerAt = nextTriggerAt)
                         val effects = listOf(
