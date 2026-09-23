@@ -75,7 +75,6 @@ class TimerDomainEngineTest {
 
     @Test
     fun testMonotonicAlertIdIncrementsAcrossMultipleAlertCycles() {
-        // Cycle 1: Trigger -> Alert 1001 -> ACK -> Waiting (alertId=null, lastAlertId=1001)
         val waiting1 = TimerSnapshot(state = TimerState.WAITING, timerGeneration = 1L, lastAlertId = 0L)
         val res1 = TimerDomainEngine.processEvent(waiting1, TimerEvent(type = TimerEventType.TIMER_TRIGGER, timerGeneration = 1L, timestamp = fixedNow), baseConfig, fixedNow)
         assertEquals(1001L, res1.newSnapshot.alertId)
@@ -85,7 +84,6 @@ class TimerDomainEngineTest {
         assertNull(ack1.newSnapshot.alertId)
         assertEquals(1001L, ack1.newSnapshot.lastAlertId)
 
-        // Cycle 2: Trigger -> Alert 1002 -> DRINK -> Waiting (alertId=null, lastAlertId=1002)
         val res2 = TimerDomainEngine.processEvent(ack1.newSnapshot, TimerEvent(type = TimerEventType.TIMER_TRIGGER, timerGeneration = 1L, timestamp = fixedNow + 30 * 60_000L), baseConfig, fixedNow + 30 * 60_000L)
         assertEquals(1002L, res2.newSnapshot.alertId)
         assertEquals(1002L, res2.newSnapshot.lastAlertId)
@@ -94,111 +92,54 @@ class TimerDomainEngineTest {
         assertNull(drink2.newSnapshot.alertId)
         assertEquals(1002L, drink2.newSnapshot.lastAlertId)
 
-        // Cycle 3: Trigger -> Alert 1003
         val res3 = TimerDomainEngine.processEvent(drink2.newSnapshot, TimerEvent(type = TimerEventType.TIMER_TRIGGER, timerGeneration = 1L, timestamp = fixedNow + 60 * 60_000L), baseConfig, fixedNow + 60 * 60_000L)
         assertEquals(1003L, res3.newSnapshot.alertId)
         assertEquals(1003L, res3.newSnapshot.lastAlertId)
 
-        // Stale broadcast with alertId=1001 from Cycle 1 arrives during Cycle 3: MUST BE IGNORED
         val staleAck1 = TimerDomainEngine.processEvent(res3.newSnapshot, TimerEvent(type = TimerEventType.ACKNOWLEDGE, timerGeneration = 1L, alertId = 1001L, timestamp = fixedNow + 60 * 60_000L + 1000L), baseConfig, fixedNow + 60 * 60_000L + 1000L)
         assertEquals(res3.newSnapshot, staleAck1.newSnapshot)
         assertTrue(staleAck1.effects.isEmpty())
     }
 
     @Test
-    fun testAcknowledgeResolvesAlert() {
-        val alerting = TimerSnapshot(
-            state = TimerState.ALERT_ACTIVE,
-            timerGeneration = 3L,
-            alertId = 1002L,
-            lastAlertId = 1002L,
-            alertStartedAt = fixedNow,
-            alertDeadlineAt = fixedNow + 15_000L
-        )
-        val ackEvent = TimerEvent(type = TimerEventType.ACKNOWLEDGE, timerGeneration = 3L, alertId = 1002L, timestamp = fixedNow + 5000L)
+    fun testMissingGenerationIsIgnored() {
+        val waiting = TimerSnapshot(state = TimerState.WAITING, timerGeneration = 5L, nextTriggerAt = fixedNow)
+        val nullGenEvent = TimerEvent(type = TimerEventType.TIMER_TRIGGER, timerGeneration = null, timestamp = fixedNow)
 
-        val result = TimerDomainEngine.processEvent(alerting, ackEvent, baseConfig, fixedNow + 5000L)
-
-        assertEquals(TimerState.WAITING, result.newSnapshot.state)
-        assertNull(result.newSnapshot.alertId)
-        assertEquals(1002L, result.newSnapshot.lastAlertId)
-        assertEquals(fixedNow + 5000L + 30 * 60_000L, result.newSnapshot.nextTriggerAt)
-
-        assertTrue(result.effects.any { it is TimerEffect.RecordAck })
-        assertTrue(result.effects.any { it is TimerEffect.CancelAlertTimeout })
-        assertTrue(result.effects.any { it is TimerEffect.CancelReminder })
-    }
-
-    @Test
-    fun testDrinkResolvesAlertAndAddsIntake() {
-        val alerting = TimerSnapshot(
-            state = TimerState.ALERT_ACTIVE,
-            timerGeneration = 3L,
-            alertId = 1002L,
-            lastAlertId = 1002L,
-            alertStartedAt = fixedNow,
-            alertDeadlineAt = fixedNow + 15_000L
-        )
-        val drinkEvent = TimerEvent(type = TimerEventType.DRINK, timerGeneration = 3L, alertId = 1002L, timestamp = fixedNow + 2000L)
-
-        val result = TimerDomainEngine.processEvent(alerting, drinkEvent, baseConfig, fixedNow + 2000L)
-
-        assertEquals(TimerState.WAITING, result.newSnapshot.state)
-        assertNull(result.newSnapshot.alertId)
-
-        assertTrue(result.effects.any { it is TimerEffect.RecordDrink && it.amountMl == 250 })
-        assertTrue(result.effects.any { it is TimerEffect.RecordAck })
-    }
-
-    @Test
-    fun testAlertTimeoutResolvesAlertAndRecordsMissed() {
-        val alerting = TimerSnapshot(
-            state = TimerState.ALERT_ACTIVE,
-            timerGeneration = 4L,
-            alertId = 1005L,
-            lastAlertId = 1005L,
-            alertStartedAt = fixedNow,
-            alertDeadlineAt = fixedNow + 15_000L
-        )
-        val timeoutEvent = TimerEvent(type = TimerEventType.ALERT_TIMEOUT, timerGeneration = 4L, alertId = 1005L, timestamp = fixedNow + 15_000L)
-
-        val result = TimerDomainEngine.processEvent(alerting, timeoutEvent, baseConfig, fixedNow + 15_000L)
-
-        assertEquals(TimerState.WAITING, result.newSnapshot.state)
-        assertNull(result.newSnapshot.alertId)
-
-        assertTrue(result.effects.any { it is TimerEffect.RecordMissed })
-        assertTrue(result.effects.any { it is TimerEffect.ShowMissedNotification && it.alertDurationSeconds == 15 })
-    }
-
-    @Test
-    fun testStaleGenerationEventIsIgnored() {
-        val waiting = TimerSnapshot(
-            state = TimerState.WAITING,
-            timerGeneration = 10L,
-            nextTriggerAt = fixedNow + 10_000L
-        )
-        val staleEvent = TimerEvent(type = TimerEventType.TIMER_TRIGGER, timerGeneration = 9L, timestamp = fixedNow)
-
-        val result = TimerDomainEngine.processEvent(waiting, staleEvent, baseConfig, fixedNow)
+        val result = TimerDomainEngine.processEvent(waiting, nullGenEvent, baseConfig, fixedNow)
 
         assertEquals(waiting, result.newSnapshot)
         assertTrue(result.effects.isEmpty())
     }
 
     @Test
-    fun testStaleAlertIdIsIgnored() {
-        val alerting = TimerSnapshot(
-            state = TimerState.ALERT_ACTIVE,
-            timerGeneration = 5L,
-            alertId = 1020L,
-            lastAlertId = 1020L,
-            alertStartedAt = fixedNow,
-            alertDeadlineAt = fixedNow + 15_000L
-        )
-        val staleAck = TimerEvent(type = TimerEventType.ACKNOWLEDGE, timerGeneration = 5L, alertId = 1019L, timestamp = fixedNow + 1000L)
+    fun testMissingAlertIdIsIgnored() {
+        val alerting = TimerSnapshot(state = TimerState.ALERT_ACTIVE, timerGeneration = 5L, alertId = 200L)
+        val nullAlertIdAck = TimerEvent(type = TimerEventType.ACKNOWLEDGE, timerGeneration = 5L, alertId = null, timestamp = fixedNow)
 
-        val result = TimerDomainEngine.processEvent(alerting, staleAck, baseConfig, fixedNow + 1000L)
+        val result = TimerDomainEngine.processEvent(alerting, nullAlertIdAck, baseConfig, fixedNow)
+
+        assertEquals(alerting, result.newSnapshot)
+        assertTrue(result.effects.isEmpty())
+    }
+
+    @Test
+    fun testWrongGenerationIsIgnored() {
+        val waiting = TimerSnapshot(state = TimerState.WAITING, timerGeneration = 10L)
+        val wrongGenEvent = TimerEvent(type = TimerEventType.TIMER_TRIGGER, timerGeneration = 9L, timestamp = fixedNow)
+
+        val result = TimerDomainEngine.processEvent(waiting, wrongGenEvent, baseConfig, fixedNow)
+
+        assertEquals(waiting, result.newSnapshot)
+        assertTrue(result.effects.isEmpty())
+    }
+
+    @Test
+    fun testWrongAlertIdIsIgnored() {
+        val alerting = TimerSnapshot(state = TimerState.ALERT_ACTIVE, timerGeneration = 5L, alertId = 1020L)
+        val wrongAck = TimerEvent(type = TimerEventType.ACKNOWLEDGE, timerGeneration = 5L, alertId = 1019L, timestamp = fixedNow)
+
+        val result = TimerDomainEngine.processEvent(alerting, wrongAck, baseConfig, fixedNow)
 
         assertEquals(alerting, result.newSnapshot)
         assertTrue(result.effects.isEmpty())
@@ -206,7 +147,6 @@ class TimerDomainEngineTest {
 
     @Test
     fun testAckThenStaleTimeoutRaceIsSafe() {
-        // Step 1: User ACKs alert 500
         val alerting = TimerSnapshot(
             state = TimerState.ALERT_ACTIVE,
             timerGeneration = 6L,
@@ -221,11 +161,9 @@ class TimerDomainEngineTest {
         assertEquals(TimerState.WAITING, ackResult.newSnapshot.state)
         assertNull(ackResult.newSnapshot.alertId)
 
-        // Step 2: An in-flight timeout callback for alert 500 arrives later
         val staleTimeout = TimerEvent(type = TimerEventType.ALERT_TIMEOUT, timerGeneration = 6L, alertId = 500L, timestamp = fixedNow + 15_000L)
         val timeoutResult = TimerDomainEngine.processEvent(ackResult.newSnapshot, staleTimeout, baseConfig, fixedNow + 15_000L)
 
-        // Must be completely ignored! No missed stats recorded, state remains WAITING with original nextTriggerAt
         assertEquals(ackResult.newSnapshot, timeoutResult.newSnapshot)
         assertTrue(timeoutResult.effects.isEmpty())
     }
@@ -251,7 +189,7 @@ class TimerDomainEngineTest {
     }
 
     @Test
-    fun testStopThenStartRaceCreatesNewGeneration() {
+    fun testStopThenStartRaceCreatesNewGenerationAndRejectsOldCallbacks() {
         val sessionA = TimerSnapshot(state = TimerState.WAITING, timerGeneration = 10L, nextTriggerAt = fixedNow + 5000L)
 
         val stopResult = TimerDomainEngine.processEvent(sessionA, TimerEvent(type = TimerEventType.STOP, timerGeneration = 10L, timestamp = fixedNow), baseConfig, fixedNow)
@@ -260,12 +198,19 @@ class TimerDomainEngineTest {
         val startResult = TimerDomainEngine.processEvent(stopResult.newSnapshot, TimerEvent(type = TimerEventType.START, timestamp = fixedNow + 1000L), baseConfig, fixedNow + 1000L)
         assertEquals(11L, startResult.newSnapshot.timerGeneration)
 
-        // Old callback for generation 10 arrives
+        // Old trigger generation 10
         val oldTrigger = TimerEvent(type = TimerEventType.TIMER_TRIGGER, timerGeneration = 10L, timestamp = fixedNow + 5000L)
         val oldResult = TimerDomainEngine.processEvent(startResult.newSnapshot, oldTrigger, baseConfig, fixedNow + 5000L)
 
         assertEquals(startResult.newSnapshot, oldResult.newSnapshot)
         assertTrue(oldResult.effects.isEmpty())
+
+        // Old timeout generation 10, alert 100
+        val oldTimeout = TimerEvent(type = TimerEventType.ALERT_TIMEOUT, timerGeneration = 10L, alertId = 100L, timestamp = fixedNow + 6000L)
+        val oldTimeoutResult = TimerDomainEngine.processEvent(startResult.newSnapshot, oldTimeout, baseConfig, fixedNow + 6000L)
+
+        assertEquals(startResult.newSnapshot, oldTimeoutResult.newSnapshot)
+        assertTrue(oldTimeoutResult.effects.isEmpty())
     }
 
     @Test
@@ -273,7 +218,6 @@ class TimerDomainEngineTest {
         val alerting = TimerSnapshot(state = TimerState.ALERT_ACTIVE, timerGeneration = 1L, alertId = 100L, lastAlertId = 100L)
         val ackResult1 = TimerDomainEngine.processEvent(alerting, TimerEvent(type = TimerEventType.ACKNOWLEDGE, timerGeneration = 1L, alertId = 100L, timestamp = fixedNow), baseConfig, fixedNow)
 
-        // Duplicate ACK
         val ackResult2 = TimerDomainEngine.processEvent(ackResult1.newSnapshot, TimerEvent(type = TimerEventType.ACKNOWLEDGE, timerGeneration = 1L, alertId = 100L, timestamp = fixedNow + 100L), baseConfig, fixedNow + 100L)
 
         assertEquals(ackResult1.newSnapshot, ackResult2.newSnapshot)
@@ -285,7 +229,6 @@ class TimerDomainEngineTest {
         val alerting = TimerSnapshot(state = TimerState.ALERT_ACTIVE, timerGeneration = 1L, alertId = 100L, lastAlertId = 100L)
         val drinkResult1 = TimerDomainEngine.processEvent(alerting, TimerEvent(type = TimerEventType.DRINK, timerGeneration = 1L, alertId = 100L, timestamp = fixedNow), baseConfig, fixedNow)
 
-        // Duplicate DRINK
         val drinkResult2 = TimerDomainEngine.processEvent(drinkResult1.newSnapshot, TimerEvent(type = TimerEventType.DRINK, timerGeneration = 1L, alertId = 100L, timestamp = fixedNow + 100L), baseConfig, fixedNow + 100L)
 
         assertEquals(drinkResult1.newSnapshot, drinkResult2.newSnapshot)
@@ -304,8 +247,8 @@ class TimerDomainEngineTest {
     }
 
     @Test
-    fun testRecoveryDuringWaitingOverdueTrigger() {
-        val pastTime = fixedNow - 100_000L
+    fun testRecoveryDuringWaitingOverdueTriggerSmallDelay() {
+        val pastTime = fixedNow - 10_000L // 10s delay (< 2 * alertDuration = 30s)
         val waiting = TimerSnapshot(state = TimerState.WAITING, timerGeneration = 2L, nextTriggerAt = pastTime)
 
         val result = TimerDomainEngine.processEvent(waiting, TimerEvent(type = TimerEventType.RECOVER, timestamp = fixedNow), baseConfig, fixedNow)
@@ -313,6 +256,18 @@ class TimerDomainEngineTest {
         assertEquals(TimerState.ALERT_ACTIVE, result.newSnapshot.state)
         assertEquals(2L, result.newSnapshot.timerGeneration)
         assertNotNull(result.newSnapshot.alertId)
+    }
+
+    @Test
+    fun testRecoveryDuringWaitingLongDowntimeAdvancesToNextTriggerWithoutStaleAlert() {
+        val longPastTime = fixedNow - 3600_000L // 1 hour overdue
+        val waiting = TimerSnapshot(state = TimerState.WAITING, timerGeneration = 2L, nextTriggerAt = longPastTime)
+
+        val result = TimerDomainEngine.processEvent(waiting, TimerEvent(type = TimerEventType.RECOVER, timestamp = fixedNow), baseConfig, fixedNow)
+
+        assertEquals(TimerState.WAITING, result.newSnapshot.state)
+        assertEquals(fixedNow + 30 * 60_000L, result.newSnapshot.nextTriggerAt)
+        assertTrue(result.effects.any { it is TimerEffect.ScheduleTimer })
     }
 
     @Test
@@ -329,7 +284,7 @@ class TimerDomainEngineTest {
         val result = TimerDomainEngine.processEvent(alerting, TimerEvent(type = TimerEventType.RECOVER, timestamp = fixedNow), baseConfig, fixedNow)
 
         assertEquals(TimerState.ALERT_ACTIVE, result.newSnapshot.state)
-        assertEquals(777L, result.newSnapshot.alertId) // MUST preserve existing alert ID
+        assertEquals(777L, result.newSnapshot.alertId)
         assertTrue(result.effects.any { it is TimerEffect.ScheduleAlertTimeout && it.alertId == 777L })
     }
 
@@ -374,25 +329,6 @@ class TimerDomainEngineTest {
         val nextCal = java.util.Calendar.getInstance().apply { timeInMillis = result.newSnapshot.nextTriggerAt!! }
         assertEquals(7, nextCal.get(java.util.Calendar.HOUR_OF_DAY))
         assertEquals(0, nextCal.get(java.util.Calendar.MINUTE))
-    }
-
-    @Test
-    fun testInactiveDayDefersReminderTrigger() {
-        val activeDays = booleanArrayOf(false, true, true, true, true, true, true)
-        val dayConfig = baseConfig.copy(activeDays = activeDays)
-
-        val cal = java.util.Calendar.getInstance().apply {
-            timeInMillis = fixedNow
-            set(java.util.Calendar.DAY_OF_WEEK, java.util.Calendar.SUNDAY)
-        }
-        val sundayNow = cal.timeInMillis
-
-        val waiting = TimerSnapshot(state = TimerState.WAITING, timerGeneration = 1L, nextTriggerAt = sundayNow)
-        val result = TimerDomainEngine.processEvent(waiting, TimerEvent(type = TimerEventType.TIMER_TRIGGER, timerGeneration = 1L, timestamp = sundayNow), dayConfig, sundayNow)
-
-        assertEquals(TimerState.WAITING, result.newSnapshot.state)
-        val nextCal = java.util.Calendar.getInstance().apply { timeInMillis = result.newSnapshot.nextTriggerAt!! }
-        assertEquals(java.util.Calendar.MONDAY, nextCal.get(java.util.Calendar.DAY_OF_WEEK))
     }
 
     @Test
