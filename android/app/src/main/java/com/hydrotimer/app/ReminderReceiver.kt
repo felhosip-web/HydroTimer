@@ -11,47 +11,52 @@ class ReminderReceiver : BroadcastReceiver() {
         const val TIMEOUT_REQUEST_CODE = 2002
         const val ACTION_TRIGGER_REMINDER = "com.hydrotimer.app.ACTION_TRIGGER_REMINDER"
         const val ACTION_LOG_DRINK = "com.hydrotimer.app.ACTION_LOG_DRINK"
+        const val ACTION_LOG_MISSED_DRINK = "com.hydrotimer.app.ACTION_LOG_MISSED_DRINK"
         const val ACTION_ACKNOWLEDGE = "com.hydrotimer.app.ACTION_ACKNOWLEDGE"
         const val ACTION_ALERT_TIMEOUT = "com.hydrotimer.app.ACTION_ALERT_TIMEOUT"
     }
 
     override fun onReceive(context: Context, intent: Intent) {
         val timerManager = TimerManager(context)
+        val gen = if (intent.hasExtra(TimerManager.EXTRA_TIMER_GENERATION)) {
+            intent.getLongExtra(TimerManager.EXTRA_TIMER_GENERATION, -1L)
+        } else null
+        val alertId = if (intent.hasExtra(TimerManager.EXTRA_ALERT_ID)) {
+            intent.getLongExtra(TimerManager.EXTRA_ALERT_ID, -1L)
+        } else null
+        val now = System.currentTimeMillis()
+
         when (intent.action) {
             ACTION_TRIGGER_REMINDER -> {
-                if (!timerManager.isTimerRunning()) return
-                val today = java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_WEEK)
-                if (!timerManager.isDayActive(today) || timerManager.isInQuietHours()) {
-                    timerManager.scheduleNextOccurrence()
-                    return
-                }
-                NotificationHelper.showWaterReminder(context)
-                timerManager.scheduleAlertTimeout(timerManager.getAlertDurationSeconds())
+                timerManager.dispatch(
+                    TimerEvent(TimerEventType.TIMER_TRIGGER, timerGeneration = gen, timestamp = now),
+                    now
+                )
             }
             ACTION_LOG_DRINK -> {
-                timerManager.cancelAlertTimeout()
-                NotificationHelper.cancelAlertNotifications(context)
+                timerManager.dispatch(
+                    TimerEvent(TimerEventType.DRINK, timerGeneration = gen, alertId = alertId, timestamp = now),
+                    now
+                )
+            }
+            ACTION_LOG_MISSED_DRINK -> {
                 val intake = timerManager.getIntakePerAlertMl()
                 val total = timerManager.addDrunkMl(intake)
                 timerManager.recordTodayAck()
+                NotificationHelper.cancelAlertNotifications(context)
                 Toast.makeText(context, "💧 +$intake ml rögzítve! Összesen: ${total} ml", Toast.LENGTH_SHORT).show()
-                timerManager.scheduleNextOccurrence()
             }
             ACTION_ACKNOWLEDGE -> {
-                timerManager.cancelAlertTimeout()
-                NotificationHelper.cancelAlertNotifications(context)
-                timerManager.recordTodayAck()
-                Toast.makeText(context, "✓ Emlékeztető nyugtázva, következő szakasz elindult.", Toast.LENGTH_SHORT).show()
-                timerManager.scheduleNextOccurrence()
+                timerManager.dispatch(
+                    TimerEvent(TimerEventType.ACKNOWLEDGE, timerGeneration = gen, alertId = alertId, timestamp = now),
+                    now
+                )
             }
             ACTION_ALERT_TIMEOUT -> {
-                if (!timerManager.isTimerRunning()) return
-                timerManager.cancelAlertTimeout()
-                NotificationHelper.cancelAlertNotifications(context)
-                timerManager.recordMissedAlert()
-                timerManager.recordTodayMissed()
-                NotificationHelper.showMissedAlertNotification(context, timerManager.getAlertDurationSeconds())
-                timerManager.scheduleNextOccurrence()
+                timerManager.dispatch(
+                    TimerEvent(TimerEventType.ALERT_TIMEOUT, timerGeneration = gen, alertId = alertId, timestamp = now),
+                    now
+                )
             }
         }
     }

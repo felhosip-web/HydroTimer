@@ -1,15 +1,12 @@
 package com.hydrotimer.app
 
 import android.Manifest
-import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.CountDownTimer
 import android.os.PowerManager
-import android.provider.Settings
 import android.view.View
 import android.widget.EditText
 import android.widget.Toast
@@ -26,7 +23,10 @@ class MainActivity : AppCompatActivity() {
     private var uiCountDownTimer: CountDownTimer? = null
 
     private val prefChangeListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-        if (key == TimerManager.KEY_NEXT_TRIGGER_TIMESTAMP ||
+        if (key == TimerManager.KEY_STATE ||
+            key == TimerManager.KEY_TIMER_GENERATION ||
+            key == TimerManager.KEY_ALERT_ID ||
+            key == TimerManager.KEY_NEXT_TRIGGER_TIMESTAMP ||
             key == TimerManager.KEY_TODAY_DRUNK_ML ||
             key == TimerManager.KEY_TODAY_MISSED_COUNT ||
             key == TimerManager.KEY_TODAY_ACK_COUNT ||
@@ -57,12 +57,12 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        timerManager.dispatch(TimerEvent(TimerEventType.RECOVER, timestamp = System.currentTimeMillis()))
         updateUIState()
         checkMissedAlertBanner()
     }
 
     private fun setupUI() {
-        // Toggle Main Interval Timer
         binding.btnToggleTimer.setOnClickListener {
             if (timerManager.isTimerRunning()) {
                 timerManager.stopTimer()
@@ -84,17 +84,26 @@ class MainActivity : AppCompatActivity() {
         }
 
         binding.btnTestAlert.setOnClickListener {
-            NotificationHelper.showWaterReminder(this)
+            var snapshot = timerManager.getSnapshot()
+            if (snapshot.state == TimerState.STOPPED) {
+                timerManager.startTimer()
+                snapshot = timerManager.getSnapshot()
+            }
+            timerManager.dispatch(TimerEvent(TimerEventType.TIMER_TRIGGER, timerGeneration = snapshot.timerGeneration, timestamp = System.currentTimeMillis()))
             val alertDuration = timerManager.getAlertDurationSeconds()
-            timerManager.scheduleAlertTimeout(alertDuration)
             Toast.makeText(this, "🔊 Riasztás elküldve! ($alertDuration mp nyugtázási ablak)", Toast.LENGTH_SHORT).show()
         }
 
         binding.btnLogDrink.setOnClickListener {
-            val intake = timerManager.getIntakePerAlertMl()
-            val total = timerManager.addDrunkMl(intake)
+            val snapshot = timerManager.getSnapshot()
+            if (snapshot.state == TimerState.ALERT_ACTIVE) {
+                timerManager.dispatch(TimerEvent(TimerEventType.DRINK, timerGeneration = snapshot.timerGeneration, alertId = snapshot.alertId, timestamp = System.currentTimeMillis()))
+            } else {
+                val intake = timerManager.getIntakePerAlertMl()
+                val total = timerManager.addDrunkMl(intake)
+                Toast.makeText(this, "💧 +$intake ml rögzítve! (${total} ml)", Toast.LENGTH_SHORT).show()
+            }
             updateProgress()
-            Toast.makeText(this, "💧 +$intake ml rögzítve! (${total} ml)", Toast.LENGTH_SHORT).show()
         }
 
         binding.btnEditIntakeAmount.setOnClickListener {
@@ -106,7 +115,6 @@ class MainActivity : AppCompatActivity() {
             binding.cardMissedAlert.visibility = View.GONE
         }
 
-        // Interval Quick Buttons: 30m, 45m, 60m + Custom input
         binding.btnInterval30m.setOnClickListener { setInterval(30) }
         binding.btnInterval45m.setOnClickListener { setInterval(45) }
         binding.btnInterval60m.setOnClickListener { setInterval(60) }
@@ -114,13 +122,11 @@ class MainActivity : AppCompatActivity() {
 
         setupActiveDaysUI()
 
-        // Alert Duration Quick Buttons: 5s (min), 15s, 30s + Custom input
         binding.btnDuration5s.setOnClickListener { setAlertDuration(5) }
         binding.btnDuration15s.setOnClickListener { setAlertDuration(15) }
         binding.btnDuration30s.setOnClickListener { setAlertDuration(30) }
         binding.btnDurationCustom.setOnClickListener { showCustomDurationDialog() }
 
-        // Quiet Hours (Csendes Időszak / Ne Zavarj) controls
         binding.switchQuietHours.setOnCheckedChangeListener { _, isChecked ->
             timerManager.setQuietHoursEnabled(isChecked)
             updateQuietHoursUI()
@@ -288,7 +294,6 @@ class MainActivity : AppCompatActivity() {
     private fun setupActiveDaysUI() {
         binding.btnActiveDaysDropdown.setOnClickListener {
             val days = timerManager.getActiveDays()
-            // Index mapping: 0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat
             val options = arrayOf("Hétfő", "Kedd", "Szerda", "Csütörtök", "Péntek", "Szombat", "Vasárnap")
             val checkedItems = booleanArrayOf(days[1], days[2], days[3], days[4], days[5], days[6], days[0])
 
@@ -463,7 +468,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateUIState() {
-        val isRunning = timerManager.isTimerRunning()
+        val snapshot = timerManager.getSnapshot()
+        val isRunning = snapshot.state != TimerState.STOPPED
         val interval = timerManager.getIntervalMinutes()
         val alertSec = timerManager.getAlertDurationSeconds()
 
@@ -489,37 +495,27 @@ class MainActivity : AppCompatActivity() {
 
     private fun startUiCountDown() {
         uiCountDownTimer?.cancel()
+        val snapshot = timerManager.getSnapshot()
+
+        if (snapshot.state == TimerState.ALERT_ACTIVE) {
+            binding.tvTimerCountdown.text = "RIASZTÁS"
+            binding.tvTimerCountdown.setTextColor(android.graphics.Color.parseColor("#F59E0B"))
+
+            val deadline = snapshot.alertDeadlineAt ?: System.currentTimeMillis()
+            val alertMillisRemaining = Math.max(0L, deadline - System.currentTimeMillis())
+
+            uiCountDownTimer = object : CountDownTimer(alertMillisRemaining, 1000) {
+                override fun onTick(millisUntilFinished: Long) {}
+                override fun onFinish() {
+                    updateUIState()
+                }
+            }.start()
+            return
+        }
 
         binding.tvTimerCountdown.setTextColor(ContextCompat.getColor(this, R.color.text_primary))
-
-        val nextTime = timerManager.getNextTriggerTimestamp()
-        var millisRemaining = nextTime - System.currentTimeMillis()
-
-        val alertDurationMillis = timerManager.getAlertDurationSeconds() * 1000L
-
-        if (millisRemaining <= 0) {
-            val millisPast = -millisRemaining
-            if (millisPast < alertDurationMillis) {
-                // We are in the alert phase!
-                binding.tvTimerCountdown.text = "RIASZTÁS"
-                binding.tvTimerCountdown.setTextColor(android.graphics.Color.parseColor("#F59E0B")) // Amber
-
-                // Set a timer for the remaining alert duration so we can reset UI after it finishes
-                val alertMillisRemaining = alertDurationMillis - millisPast
-                uiCountDownTimer = object : CountDownTimer(alertMillisRemaining, 1000) {
-                    override fun onTick(millisUntilFinished: Long) {}
-                    override fun onFinish() {
-                        if (timerManager.isTimerRunning()) {
-                            updateUIState()
-                        }
-                    }
-                }.start()
-                return
-            } else {
-                binding.tvTimerCountdown.text = "00:00"
-                return
-            }
-        }
+        val nextTime = snapshot.nextTriggerAt ?: System.currentTimeMillis()
+        val millisRemaining = Math.max(0L, nextTime - System.currentTimeMillis())
 
         uiCountDownTimer = object : CountDownTimer(millisRemaining, 1000) {
             override fun onTick(millisUntilFinished: Long) {
@@ -530,9 +526,7 @@ class MainActivity : AppCompatActivity() {
             }
 
             override fun onFinish() {
-                if (timerManager.isTimerRunning()) {
-                    updateUIState()
-                }
+                updateUIState()
             }
         }.start()
     }
