@@ -1,3 +1,4 @@
+// @ts-ignore
 import { describe, test, expect } from 'bun:test';
 import { TimerDomainEngine, calculateNextTriggerAt } from '../TimerDomainEngine';
 import { TimerSnapshot, EngineConfig, TimerEvent } from '../types';
@@ -370,5 +371,45 @@ describe('TimerDomainEngine Unit Tests', () => {
     expect(triggerDate.getDay()).toBe(1); // Monday
     expect(triggerDate.getHours()).toBe(0);
     expect(triggerDate.getMinutes()).toBe(0);
+  });
+
+  // Test A — stopped duration edit
+  test('Test A — stopped duration edit keeps timer STOPPED and does not start new generation', () => {
+    const now = 100000;
+    const stoppedSnap: TimerSnapshot = {
+      ...defaultSnapshot,
+      state: 'STOPPED',
+      timerGeneration: 5,
+    };
+
+    // Changing duration while STOPPED should not issue START or TIMER_TRIGGER events
+    // Engine processEvent on non-START events when STOPPED returns same snapshot
+    const dummyTrigger: TimerEvent = { type: 'TIMER_TRIGGER', timerGeneration: 5, timestamp: now };
+    const res = TimerDomainEngine.processEvent(stoppedSnap, dummyTrigger, defaultConfig, now);
+
+    expect(res.newSnapshot.state).toBe('STOPPED');
+    expect(res.newSnapshot.timerGeneration).toBe(5);
+    expect(res.effects.length).toBe(0);
+  });
+
+  // Test B — running config update uses NEW configuration for startTimer
+  test('Test B — running config update uses NEW configuration for startTimer', () => {
+    const now = 100000;
+    const stoppedSnap: TimerSnapshot = {
+      ...defaultSnapshot,
+      state: 'STOPPED',
+      timerGeneration: 0,
+    };
+
+    const oldConfig: EngineConfig = { ...defaultConfig, intervalMinutes: 30 };
+    const newConfig: EngineConfig = { ...defaultConfig, intervalMinutes: 60 };
+
+    // Start with old config
+    const resOld = TimerDomainEngine.processEvent(stoppedSnap, { type: 'START', timestamp: now }, oldConfig, now);
+    expect(resOld.newSnapshot.nextTriggerAt).toBe(now + 30 * 60 * 1000);
+
+    // Restart with new config
+    const resNew = TimerDomainEngine.processEvent(resOld.newSnapshot, { type: 'START', timestamp: now }, newConfig, now);
+    expect(resNew.newSnapshot.nextTriggerAt).toBe(now + 60 * 60 * 1000);
   });
 });

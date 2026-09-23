@@ -323,9 +323,10 @@ export default function App() {
 
   const handleAdjustMinutes = (deltaMinutes: number) => {
     const newMins = Math.max(1, config.intervalMinutes + deltaMinutes);
-    setConfig((prev) => ({ ...prev, intervalMinutes: newMins }));
-    if (!timerController.isRunning && config.mode === 'interval') {
-      timerController.startTimer();
+    const newConfig = { ...config, intervalMinutes: newMins };
+    setConfig(newConfig);
+    if (timerController.isRunning && config.mode === 'interval') {
+      timerController.startTimer(newConfig);
     }
   };
 
@@ -335,9 +336,10 @@ export default function App() {
   };
 
   const handleSetCountdownDuration = (mins: number, secs: number = 0) => {
-    setConfig((prev) => ({ ...prev, countdownMinutes: mins, countdownSeconds: secs }));
-    if (!timerController.isRunning && config.mode === 'countdown') {
-      timerController.startTimer();
+    const newConfig = { ...config, countdownMinutes: mins, countdownSeconds: secs };
+    setConfig(newConfig);
+    if (timerController.isRunning && config.mode === 'countdown') {
+      timerController.startTimer(newConfig);
     }
   };
 
@@ -347,16 +349,22 @@ export default function App() {
   };
 
   const handleSelectEvent = (event: CustomEventItem) => {
-    timerController.stopTimer();
-    setConfig((prev) => ({
-      ...prev,
+    const wasRunning = timerController.isRunning;
+    const newConfig: TimerConfig = {
+      ...config,
       title: event.title,
       intervalMinutes: event.intervalMinutes,
       alertDurationSeconds: Math.max(5, event.alertDurationSeconds || 15),
       soundType: event.soundType,
       vibrationPattern: event.vibrationPattern,
       intakeMlPerAlert: event.intakeMl || 0,
-    }));
+    };
+    setConfig(newConfig);
+    if (wasRunning && config.mode === 'interval') {
+      timerController.startTimer(newConfig);
+    } else {
+      timerController.stopTimer();
+    }
   };
 
   const handleSaveCustomEvent = (event: CustomEventItem) => {
@@ -657,7 +665,7 @@ export default function App() {
         onSaveConfig={(newConfig) => {
           setConfig(newConfig);
           if (timerController.isRunning) {
-            timerController.startTimer();
+            timerController.startTimer(newConfig);
           }
         }}
         onSelectEvent={handleSelectEvent}

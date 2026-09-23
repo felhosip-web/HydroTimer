@@ -8,7 +8,7 @@ import {
 import { TimerDomainEngine } from '../domain/timer/TimerDomainEngine';
 import { TimerRepository } from '../domain/timer/TimerRepository';
 import { BrowserScheduler } from '../domain/timer/BrowserScheduler';
-import { TimerConfig, ActivityLog } from '../types';
+import { TimerConfig } from '../types';
 
 interface UseTimerControllerProps {
   config: TimerConfig;
@@ -116,9 +116,12 @@ export function useTimerController({
 
   // Core event dispatch method
   const dispatch = useCallback(
-    (event: TimerEvent): TimerSnapshot => {
+    (event: TimerEvent, overrideConfig?: TimerConfig): TimerSnapshot => {
+      if (overrideConfig) {
+        configRef.current = overrideConfig;
+      }
       const currentSnap = snapshotRef.current;
-      const engineCfg = getEngineConfig();
+      const engineCfg = getEngineConfig(overrideConfig);
       const result = TimerDomainEngine.processEvent(currentSnap, event, engineCfg, event.timestamp);
 
       snapshotRef.current = result.newSnapshot;
@@ -172,12 +175,18 @@ export function useTimerController({
   }, [dispatch]);
 
   // Helper action methods
-  const startTimer = useCallback(() => {
-    dispatch({
-      type: 'START',
-      timestamp: Date.now(),
-    });
-  }, [dispatch]);
+  const startTimer = useCallback(
+    (overrideConfig?: TimerConfig) => {
+      dispatch(
+        {
+          type: 'START',
+          timestamp: Date.now(),
+        },
+        overrideConfig
+      );
+    },
+    [dispatch]
+  );
 
   const stopTimer = useCallback(() => {
     dispatch({
@@ -265,7 +274,7 @@ export function useTimerController({
     updateTimeDisplays();
     const interval = setInterval(updateTimeDisplays, 500);
     return () => clearInterval(interval);
-  }, [snapshot]);
+  }, [snapshot, config]);
 
   return {
     snapshot,
