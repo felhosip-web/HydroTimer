@@ -27,6 +27,8 @@ export interface TimerConfig {
   countdownMinutes: number;
   countdownSeconds: number;
   alertDurationSeconds: number; // Min 5s, presets: 5, 15, 30 or custom
+  intervalMode?: 'free' | 'clock';
+  clockIntervalMinutes?: number;
   soundType: SoundEffectType;
   vibrationPattern: VibrationPatternType;
   autoRestart?: boolean;

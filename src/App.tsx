@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import confetti from 'canvas-confetti';
 import {
   Smartphone,
@@ -11,20 +11,13 @@ import {
   Sliders,
   Droplets,
   Bell,
-  CheckCircle,
-  Volume2,
-  Sparkles,
-  Bluetooth,
   HelpCircle,
   Github,
-  Timer,
-  Repeat,
 } from 'lucide-react';
 import {
   TimerConfig,
   ActivityLog,
   BluetoothDeviceState,
-  PresetId,
   CustomEventItem,
   TimerMode,
 } from './types';
@@ -36,6 +29,7 @@ import { DailyStats } from './components/DailyStats';
 import { QuickSettingsModal } from './components/QuickSettingsModal';
 import { NativeCodeViewer } from './components/NativeCodeViewer';
 import { CompatibilityGuideModal } from './components/CompatibilityGuideModal';
+import { useTimerController } from './hooks/useTimerController';
 
 const DEFAULT_CUSTOM_EVENTS: CustomEventItem[] = [
   {
@@ -108,6 +102,8 @@ const DEFAULT_CONFIG: TimerConfig = {
   countdownMinutes: 5,
   countdownSeconds: 0,
   alertDurationSeconds: 15, // Min 5s, presets: 5, 15, 30 or custom
+  intervalMode: 'free',
+  clockIntervalMinutes: 30,
   soundType: 'water_drop',
   vibrationPattern: 'double',
   autoRestart: true,
@@ -139,22 +135,6 @@ export default function App() {
       return DEFAULT_CONFIG;
     }
   });
-
-  const [isRunning, setIsRunning] = useState(false);
-  const [isAlerting, setIsAlerting] = useState(false);
-  const [alertSecondsLeft, setAlertSecondsLeft] = useState(15);
-  const [missedAlertNotice, setMissedAlertNotice] = useState<{
-    title: string;
-    timeStr: string;
-    alertDuration: number;
-  } | null>(null);
-
-  const totalDuration =
-    config.mode === 'countdown'
-      ? config.countdownMinutes * 60 + (config.countdownSeconds || 0)
-      : config.intervalMinutes * 60;
-
-  const [remainingSeconds, setRemainingSeconds] = useState(totalDuration);
 
   const [waterIntakeMl, setWaterIntakeMl] = useState(() => {
     try {
@@ -189,6 +169,93 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'both' | 'phone' | 'watch' | 'stats'>('both');
   const [notificationStatus, setNotificationStatus] = useState<NotificationPermission | 'unsupported'>('default');
 
+  // Quiet Hours check helper
+  const isCurrentlyInQuietHours = useCallback(() => {
+    if (!config.quietHoursEnabled) return false;
+    const now = new Date();
+    const currentMins = now.getHours() * 60 + now.getMinutes();
+
+    const [startH, startM] = config.quietHoursStart.split(':').map(Number);
+    const [endH, endM] = config.quietHoursEnd.split(':').map(Number);
+    const startTotal = startH * 60 + startM;
+    const endTotal = endH * 60 + endM;
+
+    if (startTotal > endTotal) {
+      return currentMins >= startTotal || currentMins < endTotal;
+    } else {
+      return currentMins >= startTotal && currentMins < endTotal;
+    }
+  }, [config.quietHoursEnabled, config.quietHoursStart, config.quietHoursEnd]);
+
+  // Hook callbacks for domain engine side effects
+  const handleRecordDrink = useCallback((amountMl: number) => {
+    if (amountMl > 0) {
+      setWaterIntakeMl((prev) => prev + amountMl);
+    }
+  }, []);
+
+  const handleRecordAck = useCallback(() => {
+    const newLog: ActivityLog = {
+      id: Date.now().toString(),
+      timestamp: Date.now(),
+      presetId: config.presetId,
+      title: `${config.title} (Nyugtázva)`,
+      mode: config.mode,
+      amountMl: config.intakeMlPerAlert > 0 ? config.intakeMlPerAlert : undefined,
+      completedOnWatch: false,
+      missed: false,
+    };
+    setLogs((prev) => [newLog, ...prev]);
+
+    confetti({
+      particleCount: 40,
+      spread: 55,
+      origin: { y: 0.7 },
+      colors: ['#10b981', '#38bdf8', '#34d399'],
+    });
+  }, [config.presetId, config.title, config.mode, config.intakeMlPerAlert]);
+
+  const handleRecordMissed = useCallback((durationSec: number) => {
+    const missedLog: ActivityLog = {
+      id: Date.now().toString(),
+      timestamp: Date.now(),
+      presetId: config.presetId,
+      title: `${config.title} (Elmulasztva - ${durationSec}s lejárva)`,
+      mode: config.mode,
+      completedOnWatch: false,
+      missed: true,
+    };
+    setLogs((prev) => [missedLog, ...prev]);
+  }, [config.presetId, config.title, config.mode]);
+
+  const handleShowReminder = useCallback(() => {
+    const inQuietHours = isCurrentlyInQuietHours();
+    if (!inQuietHours) {
+      soundHaptics.playAlertSound(config.soundType);
+      soundHaptics.triggerVibration(config.vibrationPattern);
+      soundHaptics.sendSystemNotification(
+        `⏰ ${config.title} Jelzés!`,
+        `Nyugtázási időablak: ${Math.max(5, config.alertDurationSeconds || 15)} másodperc áll rendelkezésre!`
+      );
+    }
+
+    confetti({
+      particleCount: 50,
+      spread: 60,
+      origin: { y: 0.8 },
+      colors: ['#38bdf8', '#0284c7', '#06b6d4', '#f59e0b'],
+    });
+  }, [config, isCurrentlyInQuietHours]);
+
+  // Connect Timer State Machine Controller
+  const timerController = useTimerController({
+    config,
+    onRecordDrink: handleRecordDrink,
+    onRecordAck: handleRecordAck,
+    onRecordMissed: handleRecordMissed,
+    onShowReminder: handleShowReminder,
+  });
+
   // Check notification permission on mount
   useEffect(() => {
     if (typeof window !== 'undefined' && 'Notification' in window) {
@@ -219,228 +286,60 @@ export default function App() {
     localStorage.setItem('hydro_activity_logs', JSON.stringify(logs));
   }, [logs]);
 
-  // Handle Quiet Hours Check
-  const isCurrentlyInQuietHours = useCallback(() => {
-    if (!config.quietHoursEnabled) return false;
-    const now = new Date();
-    const currentMins = now.getHours() * 60 + now.getMinutes();
-
-    const [startH, startM] = config.quietHoursStart.split(':').map(Number);
-    const [endH, endM] = config.quietHoursEnd.split(':').map(Number);
-    const startTotal = startH * 60 + startM;
-    const endTotal = endH * 60 + endM;
-
-    if (startTotal > endTotal) {
-      return currentMins >= startTotal || currentMins < endTotal;
-    } else {
-      return currentMins >= startTotal && currentMins < endTotal;
-    }
-  }, [config.quietHoursEnabled, config.quietHoursStart, config.quietHoursEnd]);
-
-  // Start Alert Window when timer reaches 0
-  const triggerAlertPhase = useCallback(() => {
-    const todayIndex = new Date().getDay();
-    if (config.activeDays && !config.activeDays[todayIndex]) {
-      // If today is not an active day, silently auto-restart if needed
-      if (config.mode === 'interval') {
-        const resetSec = config.intervalMinutes * 60;
-        setRemainingSeconds(resetSec);
-        if (config.autoRestart) {
-          setIsRunning(true);
-        } else {
-          setIsRunning(false);
-        }
-      } else {
-        const resetSec = config.countdownMinutes * 60 + (config.countdownSeconds || 0);
-        setRemainingSeconds(resetSec);
-        setIsRunning(false);
-      }
-      return;
-    }
-
-    const alertDuration = Math.max(5, config.alertDurationSeconds || 15);
-    setIsAlerting(true);
-    setAlertSecondsLeft(alertDuration);
-
-    const inQuietHours = isCurrentlyInQuietHours();
-    if (!inQuietHours) {
-      soundHaptics.playAlertSound(config.soundType);
-      soundHaptics.triggerVibration(config.vibrationPattern);
-      soundHaptics.sendSystemNotification(
-        `⏰ ${config.title} Jelzés!`,
-        `Nyugtázási időablak: ${alertDuration} másodperc áll rendelkezésre!`
-      );
-    }
-
-    confetti({
-      particleCount: 50,
-      spread: 60,
-      origin: { y: 0.8 },
-      colors: ['#38bdf8', '#0284c7', '#06b6d4', '#f59e0b'],
-    });
-  }, [config, isCurrentlyInQuietHours]);
-
-  // Main Timer Countdown Loop
-  useEffect(() => {
-    if (!isRunning || isAlerting) return;
-
-    const timer = setInterval(() => {
-      setRemainingSeconds((prev) => {
-        if (prev <= 1) {
-          triggerAlertPhase();
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [isRunning, isAlerting, triggerAlertPhase]);
-
-  // Alert Phase Countdown Loop (Waiting for acknowledgment within alert window)
-  useEffect(() => {
-    if (!isAlerting) return;
-
-    // Periodic beep/vibe during alert window
-    const alertTimer = setInterval(() => {
-      setAlertSecondsLeft((prev) => {
-        if (prev <= 1) {
-          // Alert timed out without acknowledgment (Missed alert)
-          handleAlertTimeoutMissed();
-          return 0;
-        }
-        // Pulse vibration every 3 seconds during alerting
-        if (prev % 3 === 0 && !isCurrentlyInQuietHours()) {
-          soundHaptics.playAlertSound(config.soundType);
-          soundHaptics.triggerVibration(config.vibrationPattern);
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(alertTimer);
-  }, [isAlerting, config, isCurrentlyInQuietHours]);
-
-  // Handle Missed Alert
-  const handleAlertTimeoutMissed = () => {
-    setIsAlerting(false);
-    const nowStr = new Date().toLocaleTimeString('hu-HU', { hour: '2-digit', minute: '2-digit' });
-
-    setMissedAlertNotice({
-      title: config.title,
-      timeStr: nowStr,
-      alertDuration: config.alertDurationSeconds || 15,
-    });
-
-    const missedLog: ActivityLog = {
-      id: Date.now().toString(),
-      timestamp: Date.now(),
-      presetId: config.presetId,
-      title: `${config.title} (Elmulasztva - ${config.alertDurationSeconds || 15}s lejárva)`,
-      mode: config.mode,
-      completedOnWatch: false,
-      missed: true,
-    };
-    setLogs((prev) => [missedLog, ...prev]);
-
-    // If interval mode, continue next cycle automatically
-    if (config.mode === 'interval') {
-      const resetTime = config.intervalMinutes * 60;
-      setRemainingSeconds(resetTime);
-      setIsRunning(true);
-    } else {
-      // Countdown mode stops on timeout
-      const resetTime = config.countdownMinutes * 60 + (config.countdownSeconds || 0);
-      setRemainingSeconds(resetTime);
-      setIsRunning(false);
-    }
-  };
-
   // User Acknowledges Alert (with or without drinking/completing)
   const handleAcknowledgeAlert = (withWater: boolean, isWatch: boolean = false) => {
-    setIsAlerting(false);
-
-    if (withWater && config.intakeMlPerAlert > 0) {
-      setWaterIntakeMl((prev) => prev + config.intakeMlPerAlert);
+    if (isWatch && withWater && config.intakeMlPerAlert > 0) {
+      // Mark as completed on watch log
+      const watchLog: ActivityLog = {
+        id: Date.now().toString(),
+        timestamp: Date.now(),
+        presetId: config.presetId,
+        title: `${config.title} (Órán Nyugtázva • +${config.intakeMlPerAlert}ml)`,
+        mode: config.mode,
+        amountMl: config.intakeMlPerAlert,
+        completedOnWatch: true,
+        missed: false,
+      };
+      setLogs((prev) => [watchLog, ...prev]);
     }
-
-    const newLog: ActivityLog = {
-      id: Date.now().toString(),
-      timestamp: Date.now(),
-      presetId: config.presetId,
-      title: `${config.title} (Nyugtázva${withWater ? ` • +${config.intakeMlPerAlert}ml` : ''})`,
-      mode: config.mode,
-      amountMl: withWater ? config.intakeMlPerAlert : undefined,
-      completedOnWatch: isWatch,
-      missed: false,
-    };
-    setLogs((prev) => [newLog, ...prev]);
-
-    confetti({
-      particleCount: 40,
-      spread: 55,
-      origin: { y: 0.7 },
-      colors: ['#10b981', '#38bdf8', '#34d399'],
-    });
-
-    // Reset timer
-    if (config.mode === 'interval') {
-      const resetSec = config.intervalMinutes * 60;
-      setRemainingSeconds(resetSec);
-      if (config.autoRestart) {
-        setIsRunning(true);
-      } else {
-        setIsRunning(false);
-      }
-    } else {
-      // One-shot countdown completed
-      const resetSec = config.countdownMinutes * 60 + (config.countdownSeconds || 0);
-      setRemainingSeconds(resetSec);
-      setIsRunning(false);
-    }
+    timerController.acknowledge(withWater);
   };
 
   const handleToggleTimer = () => {
-    if (isAlerting) {
+    if (timerController.isAlerting) {
       handleAcknowledgeAlert(false);
       return;
     }
-    setIsRunning(!isRunning);
+    if (timerController.isRunning) {
+      timerController.stopTimer();
+    } else {
+      timerController.startTimer();
+    }
   };
 
   const handleResetTimer = () => {
-    setIsRunning(false);
-    setIsAlerting(false);
-    const resetSec =
-      config.mode === 'countdown'
-        ? config.countdownMinutes * 60 + (config.countdownSeconds || 0)
-        : config.intervalMinutes * 60;
-    setRemainingSeconds(resetSec);
+    timerController.stopTimer();
   };
 
   const handleAdjustMinutes = (deltaMinutes: number) => {
     const newMins = Math.max(1, config.intervalMinutes + deltaMinutes);
-    setConfig((prev) => ({ ...prev, intervalMinutes: newMins }));
-    if (!isRunning && config.mode === 'interval') {
-      setRemainingSeconds(newMins * 60);
+    const newConfig = { ...config, intervalMinutes: newMins };
+    setConfig(newConfig);
+    if (timerController.isRunning && config.mode === 'interval') {
+      timerController.startTimer(newConfig);
     }
   };
 
   const handleSwitchMode = (mode: TimerMode) => {
-    setIsRunning(false);
-    setIsAlerting(false);
+    timerController.stopTimer();
     setConfig((prev) => ({ ...prev, mode }));
-    const newSec =
-      mode === 'countdown'
-        ? (config.countdownMinutes || 5) * 60 + (config.countdownSeconds || 0)
-        : config.intervalMinutes * 60;
-    setRemainingSeconds(newSec);
   };
 
   const handleSetCountdownDuration = (mins: number, secs: number = 0) => {
-    setConfig((prev) => ({ ...prev, countdownMinutes: mins, countdownSeconds: secs }));
-    if (!isRunning && config.mode === 'countdown') {
-      setRemainingSeconds(mins * 60 + secs);
+    const newConfig = { ...config, countdownMinutes: mins, countdownSeconds: secs };
+    setConfig(newConfig);
+    if (timerController.isRunning && config.mode === 'countdown') {
+      timerController.startTimer(newConfig);
     }
   };
 
@@ -450,18 +349,21 @@ export default function App() {
   };
 
   const handleSelectEvent = (event: CustomEventItem) => {
-    setIsAlerting(false);
-    setConfig((prev) => ({
-      ...prev,
+    const wasRunning = timerController.isRunning;
+    const newConfig: TimerConfig = {
+      ...config,
       title: event.title,
       intervalMinutes: event.intervalMinutes,
       alertDurationSeconds: Math.max(5, event.alertDurationSeconds || 15),
       soundType: event.soundType,
       vibrationPattern: event.vibrationPattern,
       intakeMlPerAlert: event.intakeMl || 0,
-    }));
-    if (!isRunning && config.mode === 'interval') {
-      setRemainingSeconds(event.intervalMinutes * 60);
+    };
+    setConfig(newConfig);
+    if (wasRunning && config.mode === 'interval') {
+      timerController.startTimer(newConfig);
+    } else {
+      timerController.stopTimer();
     }
   };
 
@@ -510,7 +412,7 @@ export default function App() {
   };
 
   const handleTriggerTestAlert = () => {
-    triggerAlertPhase();
+    timerController.triggerTestAlert();
   };
 
   const handleUpdateQuietHours = (enabled: boolean, start?: string, end?: string) => {
@@ -660,12 +562,12 @@ export default function App() {
           <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-5 sm:p-6 backdrop-blur-sm shadow-xl">
             <PhoneDashboard
               config={config}
-              remainingSeconds={remainingSeconds}
-              totalSeconds={totalDuration}
-              isRunning={isRunning}
-              isAlerting={isAlerting}
-              alertSecondsLeft={alertSecondsLeft}
-              missedAlertNotice={missedAlertNotice}
+              remainingSeconds={timerController.remainingSeconds}
+              totalSeconds={timerController.totalDuration}
+              isRunning={timerController.isRunning}
+              isAlerting={timerController.isAlerting}
+              alertSecondsLeft={timerController.alertSecondsLeft}
+              missedAlertNotice={timerController.missedAlertNotice}
               onToggleTimer={handleToggleTimer}
               onResetTimer={handleResetTimer}
               onAdjustMinutes={handleAdjustMinutes}
@@ -676,7 +578,7 @@ export default function App() {
               onOpenSettings={() => setIsSettingsOpen(true)}
               onTriggerTestAlert={handleTriggerTestAlert}
               onAcknowledgeAlert={(withWater) => handleAcknowledgeAlert(withWater, false)}
-              onDismissMissedNotice={() => setMissedAlertNotice(null)}
+              onDismissMissedNotice={() => timerController.dismissMissedNotice()}
               onSaveCustomEvent={handleSaveCustomEvent}
               onDeleteCustomEvent={handleDeleteCustomEvent}
               isQuietHoursActive={isCurrentlyInQuietHours()}
@@ -720,11 +622,11 @@ export default function App() {
 
             <SmartwatchSimulator
               config={config}
-              remainingSeconds={remainingSeconds}
-              totalSeconds={totalDuration}
-              isRunning={isRunning}
-              isAlerting={isAlerting}
-              alertSecondsLeft={alertSecondsLeft}
+              remainingSeconds={timerController.remainingSeconds}
+              totalSeconds={timerController.totalDuration}
+              isRunning={timerController.isRunning}
+              isAlerting={timerController.isAlerting}
+              alertSecondsLeft={timerController.alertSecondsLeft}
               waterIntakeMl={waterIntakeMl}
               bluetoothState={bluetoothState}
               onLogIntake={(ml) => handleLogIntake(ml, true)}
@@ -762,11 +664,9 @@ export default function App() {
         onClose={() => setIsSettingsOpen(false)}
         onSaveConfig={(newConfig) => {
           setConfig(newConfig);
-          const newTotal =
-            newConfig.mode === 'countdown'
-              ? newConfig.countdownMinutes * 60 + (newConfig.countdownSeconds || 0)
-              : newConfig.intervalMinutes * 60;
-          setRemainingSeconds(newTotal);
+          if (timerController.isRunning) {
+            timerController.startTimer(newConfig);
+          }
         }}
         onSelectEvent={handleSelectEvent}
       />
