@@ -496,13 +496,27 @@ class MainActivity : AppCompatActivity() {
     private fun startUiCountDown() {
         uiCountDownTimer?.cancel()
         val snapshot = timerManager.getSnapshot()
+        val now = System.currentTimeMillis()
 
         if (snapshot.state == TimerState.ALERT_ACTIVE) {
             binding.tvTimerCountdown.text = "RIASZTÁS"
             binding.tvTimerCountdown.setTextColor(android.graphics.Color.parseColor("#F59E0B"))
 
-            val deadline = snapshot.alertDeadlineAt ?: System.currentTimeMillis()
-            val alertMillisRemaining = Math.max(0L, deadline - System.currentTimeMillis())
+            val deadline = snapshot.alertDeadlineAt ?: now
+            val alertMillisRemaining = deadline - now
+
+            if (alertMillisRemaining <= 0L) {
+                timerManager.dispatch(
+                    TimerEvent(
+                        TimerEventType.ALERT_TIMEOUT,
+                        timerGeneration = snapshot.timerGeneration,
+                        alertId = snapshot.alertId,
+                        timestamp = now
+                    ),
+                    now
+                )
+                return
+            }
 
             uiCountDownTimer = object : CountDownTimer(alertMillisRemaining, 1000) {
                 override fun onTick(millisUntilFinished: Long) {}
@@ -514,8 +528,20 @@ class MainActivity : AppCompatActivity() {
         }
 
         binding.tvTimerCountdown.setTextColor(ContextCompat.getColor(this, R.color.text_primary))
-        val nextTime = snapshot.nextTriggerAt ?: System.currentTimeMillis()
-        val millisRemaining = Math.max(0L, nextTime - System.currentTimeMillis())
+        val nextTime = snapshot.nextTriggerAt ?: now
+        val millisRemaining = nextTime - now
+
+        if (millisRemaining <= 0L) {
+            timerManager.dispatch(
+                TimerEvent(
+                    TimerEventType.TIMER_TRIGGER,
+                    timerGeneration = snapshot.timerGeneration,
+                    timestamp = now
+                ),
+                now
+            )
+            return
+        }
 
         uiCountDownTimer = object : CountDownTimer(millisRemaining, 1000) {
             override fun onTick(millisUntilFinished: Long) {

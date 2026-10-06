@@ -58,7 +58,9 @@ describe('TimerDomainEngine Unit Tests', () => {
     expect(res.newSnapshot.alertId).toBe(1001);
     expect(res.newSnapshot.alertStartedAt).toBe(now);
     expect(res.newSnapshot.alertDeadlineAt).toBe(now + 15000);
+    expect(res.newSnapshot.nextTriggerAt).toBe(now + 30 * 60 * 1000);
     expect(res.effects.some((e) => e.type === 'ScheduleAlertTimeout')).toBe(true);
+    expect(res.effects.some((e) => e.type === 'ScheduleTimer' && e.triggerAtMillis === now + 30 * 60 * 1000)).toBe(true);
   });
 
   // 3. ALERT_ACTIVE -> ACKNOWLEDGE
@@ -411,5 +413,42 @@ describe('TimerDomainEngine Unit Tests', () => {
     // Restart with new config
     const resNew = TimerDomainEngine.processEvent(resOld.newSnapshot, { type: 'START', timestamp: now }, newConfig, now);
     expect(resNew.newSnapshot.nextTriggerAt).toBe(now + 60 * 60 * 1000);
+  });
+
+  // 21. TIMER_TRIGGER immediately schedules next cycle
+  test('21. TIMER_TRIGGER immediately schedules next cycle timestamp and ACK preserves it', () => {
+    const triggerTime = 100000;
+    const waitingSnap: TimerSnapshot = {
+      ...defaultSnapshot,
+      state: 'WAITING',
+      timerGeneration: 1,
+      nextTriggerAt: triggerTime,
+    };
+
+    // 1. Trigger fires at 100000
+    const triggerRes = TimerDomainEngine.processEvent(
+      waitingSnap,
+      { type: 'TIMER_TRIGGER', timerGeneration: 1, timestamp: triggerTime },
+      defaultConfig,
+      triggerTime
+    );
+
+    const expectedNextTrigger = triggerTime + 30 * 60 * 1000; // 100000 + 30m
+    expect(triggerRes.newSnapshot.state).toBe('ALERT_ACTIVE');
+    expect(triggerRes.newSnapshot.nextTriggerAt).toBe(expectedNextTrigger);
+    expect(triggerRes.effects.some((e) => e.type === 'ScheduleTimer' && e.triggerAtMillis === expectedNextTrigger)).toBe(true);
+
+    // 2. User acknowledges 5 seconds later
+    const ackTime = triggerTime + 5000;
+    const ackRes = TimerDomainEngine.processEvent(
+      triggerRes.newSnapshot,
+      { type: 'ACKNOWLEDGE', timerGeneration: 1, alertId: triggerRes.newSnapshot.alertId, timestamp: ackTime },
+      defaultConfig,
+      ackTime
+    );
+
+    expect(ackRes.newSnapshot.state).toBe('WAITING');
+    // nextTriggerAt MUST stay expectedNextTrigger (100000 + 30m), NOT shifted to (105000 + 30m)
+    expect(ackRes.newSnapshot.nextTriggerAt).toBe(expectedNextTrigger);
   });
 });
