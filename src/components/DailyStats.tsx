@@ -31,7 +31,7 @@ interface DailyStatsProps {
   waterIntakeMl: number;
   onQuickAddWater: (amountMl: number) => void;
   onClearLogs: () => void;
-  onEditProgress?: (newAmount: number) => void;
+  onEditProgress?: (newAmount: number, newGoal?: number) => void;
 }
 
 interface DailyIntakePoint {
@@ -269,16 +269,21 @@ export const DailyStats: React.FC<DailyStatsProps> = ({
                 <h3 className="text-sm font-bold text-white">Napi Hidratációs Cél</h3>
                 <button
                   onClick={() => {
-                    const result = window.prompt("Add meg a jelenlegi fogyasztást (ml):", waterIntakeMl.toString());
-                    if (result) {
-                      const val = parseInt(result);
-                      if (!isNaN(val) && onEditProgress) {
-                        onEditProgress(val);
-                      }
+                    const currentStr = window.prompt("1/2: Add meg a mai fogyasztást (ml):", waterIntakeMl.toString());
+                    if (currentStr === null) return;
+                    const parsedCurrent = parseInt(currentStr, 10);
+                    const newIntake = !isNaN(parsedCurrent) ? parsedCurrent : waterIntakeMl;
+
+                    const goalStr = window.prompt("2/2: Add meg a teljes napi célt (ml):", (config.dailyGoalMl || 2500).toString());
+                    const parsedGoal = goalStr ? parseInt(goalStr, 10) : undefined;
+                    const newGoal = parsedGoal && !isNaN(parsedGoal) && parsedGoal > 0 ? parsedGoal : undefined;
+
+                    if (onEditProgress) {
+                      onEditProgress(newIntake, newGoal);
                     }
                   }}
                   className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors"
-                  title="Fogyasztás módosítása"
+                  title="Mai fogyasztás és Napi cél módosítása"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-edit-2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
                 </button>
@@ -333,9 +338,22 @@ export const DailyStats: React.FC<DailyStatsProps> = ({
               <p className="text-[10px] text-slate-400">Napi megoszlás a kitűzött célhoz mérten</p>
             </div>
           </div>
-          <span className="text-[10px] font-semibold text-sky-400 bg-sky-950/60 border border-sky-800/50 px-2 py-0.5 rounded-full">
-            Cél: {config.dailyGoalMl} ml
-          </span>
+          <button
+            onClick={() => {
+              const goalStr = window.prompt("Add meg az új teljes napi célt (ml):", (config.dailyGoalMl || 2500).toString());
+              if (goalStr) {
+                const parsedGoal = parseInt(goalStr, 10);
+                if (!isNaN(parsedGoal) && parsedGoal > 0 && onEditProgress) {
+                  onEditProgress(waterIntakeMl, parsedGoal);
+                }
+              }
+            }}
+            className="text-[10px] font-semibold text-sky-400 hover:text-sky-300 bg-sky-950/60 hover:bg-sky-900/60 border border-sky-800/50 px-2 py-0.5 rounded-full transition-colors flex items-center gap-1 cursor-pointer"
+            title="Kattints a teljes napi cél módosításához"
+          >
+            <span>Cél: {config.dailyGoalMl} ml</span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-edit-2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+          </button>
         </div>
 
         {/* 7-Day Key Performance Metrics */}
