@@ -20,10 +20,12 @@ class ReminderReceiver : BroadcastReceiver() {
         val timerManager = TimerManager(context)
         val gen = if (intent.hasExtra(TimerManager.EXTRA_TIMER_GENERATION)) {
             intent.getLongExtra(TimerManager.EXTRA_TIMER_GENERATION, -1L)
-        } else null
+        } else -1L
+
         val alertId = if (intent.hasExtra(TimerManager.EXTRA_ALERT_ID)) {
             intent.getLongExtra(TimerManager.EXTRA_ALERT_ID, -1L)
-        } else null
+        } else -1L
+
         val now = System.currentTimeMillis()
 
         when (intent.action) {

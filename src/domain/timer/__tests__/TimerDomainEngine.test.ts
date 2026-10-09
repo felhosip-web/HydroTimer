@@ -64,6 +64,7 @@ describe('TimerDomainEngine Unit Tests', () => {
   // 3. ALERT_ACTIVE -> ACKNOWLEDGE
   test('3. ALERT_ACTIVE -> ACKNOWLEDGE', () => {
     const now = 100000;
+    const futureTriggerAt = now + 30 * 60 * 1000 - 5000; // scheduled 5s ago when trigger fired
     const alertSnap: TimerSnapshot = {
       ...defaultSnapshot,
       state: 'ALERT_ACTIVE',
@@ -71,13 +72,60 @@ describe('TimerDomainEngine Unit Tests', () => {
       alertId: 1001,
       alertStartedAt: now - 5000,
       alertDeadlineAt: now + 10000,
+      nextTriggerAt: futureTriggerAt,
     };
     const event: TimerEvent = { type: 'ACKNOWLEDGE', timerGeneration: 1, alertId: 1001, timestamp: now };
     const res = TimerDomainEngine.processEvent(alertSnap, event, defaultConfig, now);
 
     expect(res.newSnapshot.state).toBe('WAITING');
     expect(res.newSnapshot.alertId).toBeNull();
-    expect(res.newSnapshot.nextTriggerAt).toBe(now + 30 * 60 * 1000);
+    expect(res.newSnapshot.nextTriggerAt).toBe(futureTriggerAt);
+    expect(res.effects.some((e) => e.type === 'RecordAck')).toBe(true);
+  });
+
+  // 3b. TIMER_TRIGGER immediately schedules next cycle and ACK keeps original trigger time
+  test('3b. TIMER_TRIGGER immediately schedules next cycle and ACK keeps original trigger time', () => {
+    const triggerTime = 100000;
+    const waitingSnap: TimerSnapshot = {
+      ...defaultSnapshot,
+      state: 'WAITING',
+      timerGeneration: 1,
+      nextTriggerAt: triggerTime,
+    };
+    const triggerEvent: TimerEvent = { type: 'TIMER_TRIGGER', timerGeneration: 1, timestamp: triggerTime };
+    const alertRes = TimerDomainEngine.processEvent(waitingSnap, triggerEvent, defaultConfig, triggerTime);
+
+    const expectedNextTrigger = triggerTime + 30 * 60 * 1000;
+    expect(alertRes.newSnapshot.state).toBe('ALERT_ACTIVE');
+    expect(alertRes.newSnapshot.nextTriggerAt).toBe(expectedNextTrigger);
+    expect(alertRes.effects.some((e) => e.type === 'ScheduleTimer' && e.triggerAtMillis === expectedNextTrigger)).toBe(true);
+
+    // User acknowledges 10 seconds after trigger
+    const ackTime = triggerTime + 10000;
+    const ackEvent: TimerEvent = { type: 'ACKNOWLEDGE', timerGeneration: 1, alertId: alertRes.newSnapshot.alertId, timestamp: ackTime };
+    const ackRes = TimerDomainEngine.processEvent(alertRes.newSnapshot, ackEvent, defaultConfig, ackTime);
+
+    expect(ackRes.newSnapshot.state).toBe('WAITING');
+    // nextTriggerAt must stay as expectedNextTrigger (from cycle trigger time), NOT calculated from ackTime!
+    expect(ackRes.newSnapshot.nextTriggerAt).toBe(expectedNextTrigger);
+  });
+
+  // 3c. Fallback -1 generation/alertId cleanly acknowledged
+  test('3c. Fallback -1 generation/alertId cleanly acknowledged', () => {
+    const now = 100000;
+    const alertSnap: TimerSnapshot = {
+      ...defaultSnapshot,
+      state: 'ALERT_ACTIVE',
+      timerGeneration: 1,
+      alertId: 1001,
+      alertStartedAt: now - 2000,
+      alertDeadlineAt: now + 13000,
+      nextTriggerAt: now + 30 * 60 * 1000,
+    };
+    const ackEvent: TimerEvent = { type: 'ACKNOWLEDGE', timerGeneration: -1, alertId: -1, timestamp: now };
+    const res = TimerDomainEngine.processEvent(alertSnap, ackEvent, defaultConfig, now);
+
+    expect(res.newSnapshot.state).toBe('WAITING');
     expect(res.effects.some((e) => e.type === 'RecordAck')).toBe(true);
   });
 

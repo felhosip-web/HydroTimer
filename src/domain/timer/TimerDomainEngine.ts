@@ -96,7 +96,12 @@ export class TimerDomainEngine {
     if (snapshot.state !== 'WAITING') {
       return { newSnapshot: snapshot, effects: [] };
     }
-    if (event.timerGeneration === undefined || event.timerGeneration === null || event.timerGeneration !== snapshot.timerGeneration) {
+    if (
+      event.timerGeneration !== undefined &&
+      event.timerGeneration !== null &&
+      event.timerGeneration !== -1 &&
+      event.timerGeneration !== snapshot.timerGeneration
+    ) {
       return { newSnapshot: snapshot, effects: [] };
     }
 
@@ -121,6 +126,9 @@ export class TimerDomainEngine {
     const alertStartedAt = now;
     const alertDeadlineAt = now + alertDurationMs;
 
+    const isCountdown = config.mode === 'countdown';
+    const nextTriggerAt = isCountdown ? null : calculateNextTriggerAt(now, config);
+
     const newSnapshot: TimerSnapshot = {
       ...snapshot,
       state: 'ALERT_ACTIVE',
@@ -128,7 +136,7 @@ export class TimerDomainEngine {
       lastAlertId: nextAlertId,
       alertStartedAt,
       alertDeadlineAt,
-      nextTriggerAt: null,
+      nextTriggerAt,
     };
 
     const effects: TimerEffect[] = [
@@ -148,6 +156,14 @@ export class TimerDomainEngine {
       },
     ];
 
+    if (nextTriggerAt !== null) {
+      effects.push({
+        type: 'ScheduleTimer',
+        triggerAtMillis: nextTriggerAt,
+        timerGeneration: snapshot.timerGeneration,
+      });
+    }
+
     return { newSnapshot, effects };
   }
 
@@ -160,14 +176,25 @@ export class TimerDomainEngine {
     if (snapshot.state !== 'ALERT_ACTIVE') {
       return { newSnapshot: snapshot, effects: [] };
     }
-    if (event.timerGeneration === undefined || event.timerGeneration === null || event.timerGeneration !== snapshot.timerGeneration) {
+    if (
+      event.timerGeneration !== undefined &&
+      event.timerGeneration !== null &&
+      event.timerGeneration !== -1 &&
+      event.timerGeneration !== snapshot.timerGeneration
+    ) {
       return { newSnapshot: snapshot, effects: [] };
     }
-    if (snapshot.alertId === null || event.alertId === undefined || event.alertId === null || event.alertId !== snapshot.alertId) {
+    if (
+      snapshot.alertId !== null &&
+      event.alertId !== undefined &&
+      event.alertId !== null &&
+      event.alertId !== -1 &&
+      event.alertId !== snapshot.alertId
+    ) {
       return { newSnapshot: snapshot, effects: [] };
     }
 
-    const activeAlertId = snapshot.alertId;
+    const activeAlertId = snapshot.alertId ?? Math.max(1001, snapshot.lastAlertId);
     const isCountdown = config.mode === 'countdown';
 
     if (isCountdown) {
@@ -187,7 +214,7 @@ export class TimerDomainEngine {
       ];
       return { newSnapshot, effects };
     } else {
-      const nextTriggerAt = calculateNextTriggerAt(now, config);
+      const nextTriggerAt = snapshot.nextTriggerAt ?? calculateNextTriggerAt(now, config);
       const newSnapshot: TimerSnapshot = {
         ...snapshot,
         state: 'WAITING',
@@ -216,14 +243,25 @@ export class TimerDomainEngine {
     if (snapshot.state !== 'ALERT_ACTIVE') {
       return { newSnapshot: snapshot, effects: [] };
     }
-    if (event.timerGeneration === undefined || event.timerGeneration === null || event.timerGeneration !== snapshot.timerGeneration) {
+    if (
+      event.timerGeneration !== undefined &&
+      event.timerGeneration !== null &&
+      event.timerGeneration !== -1 &&
+      event.timerGeneration !== snapshot.timerGeneration
+    ) {
       return { newSnapshot: snapshot, effects: [] };
     }
-    if (snapshot.alertId === null || event.alertId === undefined || event.alertId === null || event.alertId !== snapshot.alertId) {
+    if (
+      snapshot.alertId !== null &&
+      event.alertId !== undefined &&
+      event.alertId !== null &&
+      event.alertId !== -1 &&
+      event.alertId !== snapshot.alertId
+    ) {
       return { newSnapshot: snapshot, effects: [] };
     }
 
-    const activeAlertId = snapshot.alertId;
+    const activeAlertId = snapshot.alertId ?? Math.max(1001, snapshot.lastAlertId);
     const intake = Math.max(0, config.intakePerAlertMl);
     const isCountdown = config.mode === 'countdown';
 
@@ -245,7 +283,7 @@ export class TimerDomainEngine {
       ];
       return { newSnapshot, effects };
     } else {
-      const nextTriggerAt = calculateNextTriggerAt(now, config);
+      const nextTriggerAt = snapshot.nextTriggerAt ?? calculateNextTriggerAt(now, config);
       const newSnapshot: TimerSnapshot = {
         ...snapshot,
         state: 'WAITING',
@@ -275,14 +313,25 @@ export class TimerDomainEngine {
     if (snapshot.state !== 'ALERT_ACTIVE') {
       return { newSnapshot: snapshot, effects: [] };
     }
-    if (event.timerGeneration === undefined || event.timerGeneration === null || event.timerGeneration !== snapshot.timerGeneration) {
+    if (
+      event.timerGeneration !== undefined &&
+      event.timerGeneration !== null &&
+      event.timerGeneration !== -1 &&
+      event.timerGeneration !== snapshot.timerGeneration
+    ) {
       return { newSnapshot: snapshot, effects: [] };
     }
-    if (snapshot.alertId === null || event.alertId === undefined || event.alertId === null || event.alertId !== snapshot.alertId) {
+    if (
+      snapshot.alertId !== null &&
+      event.alertId !== undefined &&
+      event.alertId !== null &&
+      event.alertId !== -1 &&
+      event.alertId !== snapshot.alertId
+    ) {
       return { newSnapshot: snapshot, effects: [] };
     }
 
-    const activeAlertId = snapshot.alertId;
+    const activeAlertId = snapshot.alertId ?? Math.max(1001, snapshot.lastAlertId);
     const durationMs =
       snapshot.alertDeadlineAt !== null && snapshot.alertStartedAt !== null
         ? snapshot.alertDeadlineAt - snapshot.alertStartedAt
@@ -308,7 +357,7 @@ export class TimerDomainEngine {
       ];
       return { newSnapshot, effects };
     } else {
-      const nextTriggerAt = calculateNextTriggerAt(now, config);
+      const nextTriggerAt = snapshot.nextTriggerAt ?? calculateNextTriggerAt(now, config);
       const newSnapshot: TimerSnapshot = {
         ...snapshot,
         state: 'WAITING',

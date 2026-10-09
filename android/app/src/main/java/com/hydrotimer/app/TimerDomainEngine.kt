@@ -90,7 +90,7 @@ object TimerDomainEngine {
         if (snapshot.state != TimerState.WAITING) {
             return TransitionResult(snapshot, emptyList())
         }
-        if (event.timerGeneration == null || event.timerGeneration != snapshot.timerGeneration) {
+        if (event.timerGeneration != null && event.timerGeneration != -1L && event.timerGeneration != snapshot.timerGeneration) {
             return TransitionResult(snapshot, emptyList())
         }
 
@@ -112,20 +112,27 @@ object TimerDomainEngine {
         val alertStartedAt = now
         val alertDeadlineAt = now + alertDurationMs
 
+        val isCountdown = config.mode == "countdown"
+        val nextTriggerAt = if (isCountdown) null else calculateNextTriggerAt(now, config)
+
         val newSnapshot = snapshot.copy(
             state = TimerState.ALERT_ACTIVE,
             alertId = nextAlertId,
             lastAlertId = nextAlertId,
             alertStartedAt = alertStartedAt,
             alertDeadlineAt = alertDeadlineAt,
-            nextTriggerAt = null
+            nextTriggerAt = nextTriggerAt
         )
 
-        val effects = listOf(
+        val effects = mutableListOf<TimerEffect>(
             TimerEffect.PersistState(newSnapshot),
             TimerEffect.ShowReminder(title = null, body = null, timerGeneration = snapshot.timerGeneration, alertId = nextAlertId),
             TimerEffect.ScheduleAlertTimeout(deadlineAtMillis = alertDeadlineAt, timerGeneration = snapshot.timerGeneration, alertId = nextAlertId)
         )
+
+        if (nextTriggerAt != null) {
+            effects.add(TimerEffect.ScheduleTimer(nextTriggerAt, snapshot.timerGeneration))
+        }
 
         return TransitionResult(newSnapshot, effects)
     }
@@ -139,14 +146,14 @@ object TimerDomainEngine {
         if (snapshot.state != TimerState.ALERT_ACTIVE) {
             return TransitionResult(snapshot, emptyList())
         }
-        if (event.timerGeneration == null || event.timerGeneration != snapshot.timerGeneration) {
+        if (event.timerGeneration != null && event.timerGeneration != -1L && event.timerGeneration != snapshot.timerGeneration) {
             return TransitionResult(snapshot, emptyList())
         }
-        if (snapshot.alertId == null || event.alertId == null || event.alertId != snapshot.alertId) {
+        if (snapshot.alertId != null && event.alertId != null && event.alertId != -1L && event.alertId != snapshot.alertId) {
             return TransitionResult(snapshot, emptyList())
         }
 
-        val activeAlertId = snapshot.alertId
+        val activeAlertId = snapshot.alertId ?: Math.max(1001L, snapshot.lastAlertId)
         val isCountdown = config.mode == "countdown"
 
         if (isCountdown) {
@@ -165,7 +172,7 @@ object TimerDomainEngine {
             )
             return TransitionResult(newSnapshot, effects)
         } else {
-            val nextTriggerAt = calculateNextTriggerAt(now, config)
+            val nextTriggerAt = snapshot.nextTriggerAt ?: calculateNextTriggerAt(now, config)
             val newSnapshot = snapshot.copy(
                 state = TimerState.WAITING,
                 alertId = null,
@@ -193,14 +200,14 @@ object TimerDomainEngine {
         if (snapshot.state != TimerState.ALERT_ACTIVE) {
             return TransitionResult(snapshot, emptyList())
         }
-        if (event.timerGeneration == null || event.timerGeneration != snapshot.timerGeneration) {
+        if (event.timerGeneration != null && event.timerGeneration != -1L && event.timerGeneration != snapshot.timerGeneration) {
             return TransitionResult(snapshot, emptyList())
         }
-        if (snapshot.alertId == null || event.alertId == null || event.alertId != snapshot.alertId) {
+        if (snapshot.alertId != null && event.alertId != null && event.alertId != -1L && event.alertId != snapshot.alertId) {
             return TransitionResult(snapshot, emptyList())
         }
 
-        val activeAlertId = snapshot.alertId
+        val activeAlertId = snapshot.alertId ?: Math.max(1001L, snapshot.lastAlertId)
         val intake = Math.max(0, config.intakePerAlertMl)
         val isCountdown = config.mode == "countdown"
 
@@ -221,7 +228,7 @@ object TimerDomainEngine {
             )
             return TransitionResult(newSnapshot, effects)
         } else {
-            val nextTriggerAt = calculateNextTriggerAt(now, config)
+            val nextTriggerAt = snapshot.nextTriggerAt ?: calculateNextTriggerAt(now, config)
             val newSnapshot = snapshot.copy(
                 state = TimerState.WAITING,
                 alertId = null,
@@ -250,14 +257,14 @@ object TimerDomainEngine {
         if (snapshot.state != TimerState.ALERT_ACTIVE) {
             return TransitionResult(snapshot, emptyList())
         }
-        if (event.timerGeneration == null || event.timerGeneration != snapshot.timerGeneration) {
+        if (event.timerGeneration != null && event.timerGeneration != -1L && event.timerGeneration != snapshot.timerGeneration) {
             return TransitionResult(snapshot, emptyList())
         }
-        if (snapshot.alertId == null || event.alertId == null || event.alertId != snapshot.alertId) {
+        if (snapshot.alertId != null && event.alertId != null && event.alertId != -1L && event.alertId != snapshot.alertId) {
             return TransitionResult(snapshot, emptyList())
         }
 
-        val activeAlertId = snapshot.alertId
+        val activeAlertId = snapshot.alertId ?: Math.max(1001L, snapshot.lastAlertId)
         val durationMs = if (snapshot.alertDeadlineAt != null && snapshot.alertStartedAt != null) {
             snapshot.alertDeadlineAt - snapshot.alertStartedAt
         } else {
@@ -283,7 +290,7 @@ object TimerDomainEngine {
             )
             return TransitionResult(newSnapshot, effects)
         } else {
-            val nextTriggerAt = calculateNextTriggerAt(now, config)
+            val nextTriggerAt = snapshot.nextTriggerAt ?: calculateNextTriggerAt(now, config)
             val newSnapshot = snapshot.copy(
                 state = TimerState.WAITING,
                 alertId = null,
