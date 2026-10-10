@@ -87,11 +87,6 @@ export class TimerDomainEngine {
     return { newSnapshot, effects };
   }
 
-  /**
-   * Returns an alert transition and schedules the next interval cycle when a waiting timer fires.
-   * Missing or -1 generation IDs are accepted; explicit mismatches are ignored.
-   * Quiet hours and inactive days defer the alert. Countdowns do not schedule another cycle.
-   */
   private static handleTimerTrigger(
     snapshot: TimerSnapshot,
     event: TimerEvent,
@@ -130,10 +125,9 @@ export class TimerDomainEngine {
     const alertDurationMs = Math.max(5, config.alertDurationSeconds) * 1000;
     const alertStartedAt = now;
     const alertDeadlineAt = now + alertDurationMs;
-    const nextTriggerAt =
-      config.mode === 'interval' || config.autoRestart
-        ? calculateNextTriggerAt(now, config)
-        : null;
+
+    const isCountdown = config.mode === 'countdown';
+    const nextTriggerAt = isCountdown ? null : calculateNextTriggerAt(now, config);
 
     const newSnapshot: TimerSnapshot = {
       ...snapshot,
@@ -173,11 +167,6 @@ export class TimerDomainEngine {
     return { newSnapshot, effects };
   }
 
-  /**
-   * Returns a transition that clears an active alert and records acknowledgment without water intake.
-   * Missing or -1 event IDs are accepted; explicit mismatches are ignored.
-   * Countdowns stop; intervals preserve the scheduled trigger or calculate one if absent.
-   */
   private static handleAcknowledge(
     snapshot: TimerSnapshot,
     event: TimerEvent,
@@ -208,7 +197,7 @@ export class TimerDomainEngine {
     const activeAlertId = snapshot.alertId ?? Math.max(1001, snapshot.lastAlertId);
     const isCountdown = config.mode === 'countdown';
 
-    if (isCountdown && !config.autoRestart) {
+    if (isCountdown) {
       const newSnapshot: TimerSnapshot = {
         ...snapshot,
         state: 'STOPPED',
@@ -225,10 +214,7 @@ export class TimerDomainEngine {
       ];
       return { newSnapshot, effects };
     } else {
-      const nextTriggerAt =
-        snapshot.nextTriggerAt !== null && snapshot.nextTriggerAt > now
-          ? snapshot.nextTriggerAt
-          : calculateNextTriggerAt(now, config);
+      const nextTriggerAt = snapshot.nextTriggerAt ?? calculateNextTriggerAt(now, config);
       const newSnapshot: TimerSnapshot = {
         ...snapshot,
         state: 'WAITING',
@@ -248,11 +234,6 @@ export class TimerDomainEngine {
     }
   }
 
-  /**
-   * Returns a transition that clears an active alert and records the configured intake and acknowledgment.
-   * Missing or -1 event IDs are accepted; explicit mismatches are ignored.
-   * Countdowns stop; intervals preserve the scheduled trigger or calculate one if absent.
-   */
   private static handleDrink(
     snapshot: TimerSnapshot,
     event: TimerEvent,
@@ -284,7 +265,7 @@ export class TimerDomainEngine {
     const intake = Math.max(0, config.intakePerAlertMl);
     const isCountdown = config.mode === 'countdown';
 
-    if (isCountdown && !config.autoRestart) {
+    if (isCountdown) {
       const newSnapshot: TimerSnapshot = {
         ...snapshot,
         state: 'STOPPED',
@@ -302,10 +283,7 @@ export class TimerDomainEngine {
       ];
       return { newSnapshot, effects };
     } else {
-      const nextTriggerAt =
-        snapshot.nextTriggerAt !== null && snapshot.nextTriggerAt > now
-          ? snapshot.nextTriggerAt
-          : calculateNextTriggerAt(now, config);
+      const nextTriggerAt = snapshot.nextTriggerAt ?? calculateNextTriggerAt(now, config);
       const newSnapshot: TimerSnapshot = {
         ...snapshot,
         state: 'WAITING',
@@ -326,11 +304,6 @@ export class TimerDomainEngine {
     }
   }
 
-  /**
-   * Returns a transition that clears an active alert and records and reports a missed reminder.
-   * Missing or -1 event IDs are accepted; explicit mismatches are ignored.
-   * Countdowns stop; intervals preserve the scheduled trigger or calculate one if absent.
-   */
   private static handleAlertTimeout(
     snapshot: TimerSnapshot,
     event: TimerEvent,
@@ -366,7 +339,7 @@ export class TimerDomainEngine {
     const durationSec = Math.max(5, Math.floor(durationMs / 1000));
     const isCountdown = config.mode === 'countdown';
 
-    if (isCountdown && !config.autoRestart) {
+    if (isCountdown) {
       const newSnapshot: TimerSnapshot = {
         ...snapshot,
         state: 'STOPPED',
@@ -384,10 +357,7 @@ export class TimerDomainEngine {
       ];
       return { newSnapshot, effects };
     } else {
-      const nextTriggerAt =
-        snapshot.nextTriggerAt !== null && snapshot.nextTriggerAt > now
-          ? snapshot.nextTriggerAt
-          : calculateNextTriggerAt(now, config);
+      const nextTriggerAt = snapshot.nextTriggerAt ?? calculateNextTriggerAt(now, config);
       const newSnapshot: TimerSnapshot = {
         ...snapshot,
         state: 'WAITING',
@@ -466,16 +436,8 @@ export class TimerDomainEngine {
           return this.processEvent(snapshot, timeoutEvent, config, now);
         } else {
           const activeAlertId = snapshot.alertId ?? Math.max(1001, snapshot.lastAlertId);
-          const nextTriggerAt =
-            snapshot.nextTriggerAt !== null && snapshot.nextTriggerAt > now
-              ? snapshot.nextTriggerAt
-              : (config.mode === 'interval' || config.autoRestart ? calculateNextTriggerAt(now, config) : null);
-          const newSnapshot: TimerSnapshot = {
-            ...snapshot,
-            nextTriggerAt,
-          };
           const effects: TimerEffect[] = [
-            { type: 'PersistState', snapshot: newSnapshot },
+            { type: 'PersistState', snapshot },
             {
               type: 'ShowReminder',
               title: null,
@@ -490,14 +452,7 @@ export class TimerDomainEngine {
               alertId: activeAlertId,
             },
           ];
-          if (nextTriggerAt !== null) {
-            effects.push({
-              type: 'ScheduleTimer',
-              triggerAtMillis: nextTriggerAt,
-              timerGeneration: snapshot.timerGeneration,
-            });
-          }
-          return { newSnapshot, effects };
+          return { newSnapshot: snapshot, effects };
         }
       }
     }

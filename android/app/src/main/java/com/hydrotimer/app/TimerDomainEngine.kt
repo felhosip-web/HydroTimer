@@ -81,11 +81,6 @@ object TimerDomainEngine {
         return TransitionResult(newSnapshot, effects)
     }
 
-    /**
-     * Returns an alert transition and schedules the next interval cycle when a waiting timer fires.
-     * Missing or -1 generation IDs are accepted; explicit mismatches are ignored.
-     * Quiet hours and inactive days defer the alert. Countdowns do not schedule another cycle.
-     */
     private fun handleTimerTrigger(
         snapshot: TimerSnapshot,
         event: TimerEvent,
@@ -116,11 +111,9 @@ object TimerDomainEngine {
         val alertDurationMs = Math.max(5, config.alertDurationSeconds) * 1000L
         val alertStartedAt = now
         val alertDeadlineAt = now + alertDurationMs
-        val nextTriggerAt = if (config.mode == "interval" || config.autoRestart) {
-            calculateNextTriggerAt(now, config)
-        } else {
-            null
-        }
+
+        val isCountdown = config.mode == "countdown"
+        val nextTriggerAt = if (isCountdown) null else calculateNextTriggerAt(now, config)
 
         val newSnapshot = snapshot.copy(
             state = TimerState.ALERT_ACTIVE,
@@ -136,6 +129,7 @@ object TimerDomainEngine {
             TimerEffect.ShowReminder(title = null, body = null, timerGeneration = snapshot.timerGeneration, alertId = nextAlertId),
             TimerEffect.ScheduleAlertTimeout(deadlineAtMillis = alertDeadlineAt, timerGeneration = snapshot.timerGeneration, alertId = nextAlertId)
         )
+
         if (nextTriggerAt != null) {
             effects.add(TimerEffect.ScheduleTimer(nextTriggerAt, snapshot.timerGeneration))
         }
@@ -143,11 +137,6 @@ object TimerDomainEngine {
         return TransitionResult(newSnapshot, effects)
     }
 
-    /**
-     * Returns a transition that clears an active alert and records acknowledgment without water intake.
-     * Missing or -1 event IDs are accepted; explicit mismatches are ignored.
-     * Countdowns stop; intervals preserve the scheduled trigger or calculate one if absent.
-     */
     private fun handleAcknowledge(
         snapshot: TimerSnapshot,
         event: TimerEvent,
@@ -167,7 +156,7 @@ object TimerDomainEngine {
         val activeAlertId = snapshot.alertId ?: Math.max(1001L, snapshot.lastAlertId)
         val isCountdown = config.mode == "countdown"
 
-        if (isCountdown && !config.autoRestart) {
+        if (isCountdown) {
             val newSnapshot = snapshot.copy(
                 state = TimerState.STOPPED,
                 alertId = null,
@@ -183,11 +172,7 @@ object TimerDomainEngine {
             )
             return TransitionResult(newSnapshot, effects)
         } else {
-            val nextTriggerAt = if (snapshot.nextTriggerAt != null && snapshot.nextTriggerAt > now) {
-                snapshot.nextTriggerAt
-            } else {
-                calculateNextTriggerAt(now, config)
-            }
+            val nextTriggerAt = snapshot.nextTriggerAt ?: calculateNextTriggerAt(now, config)
             val newSnapshot = snapshot.copy(
                 state = TimerState.WAITING,
                 alertId = null,
@@ -206,11 +191,6 @@ object TimerDomainEngine {
         }
     }
 
-    /**
-     * Returns a transition that clears an active alert and records the configured intake and acknowledgment.
-     * Missing or -1 event IDs are accepted; explicit mismatches are ignored.
-     * Countdowns stop; intervals preserve the scheduled trigger or calculate one if absent.
-     */
     private fun handleDrink(
         snapshot: TimerSnapshot,
         event: TimerEvent,
@@ -231,7 +211,7 @@ object TimerDomainEngine {
         val intake = Math.max(0, config.intakePerAlertMl)
         val isCountdown = config.mode == "countdown"
 
-        if (isCountdown && !config.autoRestart) {
+        if (isCountdown) {
             val newSnapshot = snapshot.copy(
                 state = TimerState.STOPPED,
                 alertId = null,
@@ -248,11 +228,7 @@ object TimerDomainEngine {
             )
             return TransitionResult(newSnapshot, effects)
         } else {
-            val nextTriggerAt = if (snapshot.nextTriggerAt != null && snapshot.nextTriggerAt > now) {
-                snapshot.nextTriggerAt
-            } else {
-                calculateNextTriggerAt(now, config)
-            }
+            val nextTriggerAt = snapshot.nextTriggerAt ?: calculateNextTriggerAt(now, config)
             val newSnapshot = snapshot.copy(
                 state = TimerState.WAITING,
                 alertId = null,
@@ -272,11 +248,6 @@ object TimerDomainEngine {
         }
     }
 
-    /**
-     * Returns a transition that clears an active alert and records and reports a missed reminder.
-     * Missing or -1 event IDs are accepted; explicit mismatches are ignored.
-     * Countdowns stop; intervals preserve the scheduled trigger or calculate one if absent.
-     */
     private fun handleAlertTimeout(
         snapshot: TimerSnapshot,
         event: TimerEvent,
@@ -302,7 +273,7 @@ object TimerDomainEngine {
         val durationSec = Math.max(5, (durationMs / 1000L).toInt())
         val isCountdown = config.mode == "countdown"
 
-        if (isCountdown && !config.autoRestart) {
+        if (isCountdown) {
             val newSnapshot = snapshot.copy(
                 state = TimerState.STOPPED,
                 alertId = null,
@@ -319,11 +290,7 @@ object TimerDomainEngine {
             )
             return TransitionResult(newSnapshot, effects)
         } else {
-            val nextTriggerAt = if (snapshot.nextTriggerAt != null && snapshot.nextTriggerAt > now) {
-                snapshot.nextTriggerAt
-            } else {
-                calculateNextTriggerAt(now, config)
-            }
+            val nextTriggerAt = snapshot.nextTriggerAt ?: calculateNextTriggerAt(now, config)
             val newSnapshot = snapshot.copy(
                 state = TimerState.WAITING,
                 alertId = null,
@@ -398,23 +365,12 @@ object TimerDomainEngine {
                     processEvent(snapshot, timeoutEvent, config, now)
                 } else {
                     val activeAlertId = snapshot.alertId ?: Math.max(1001L, snapshot.lastAlertId)
-                    val nextTriggerAt = if (snapshot.nextTriggerAt != null && snapshot.nextTriggerAt > now) {
-                        snapshot.nextTriggerAt
-                    } else if (config.mode == "interval" || config.autoRestart) {
-                        calculateNextTriggerAt(now, config)
-                    } else {
-                        null
-                    }
-                    val newSnapshot = snapshot.copy(nextTriggerAt = nextTriggerAt)
-                    val effects = mutableListOf<TimerEffect>(
-                        TimerEffect.PersistState(newSnapshot),
+                    val effects = listOf(
+                        TimerEffect.PersistState(snapshot),
                         TimerEffect.ShowReminder(title = null, body = null, timerGeneration = snapshot.timerGeneration, alertId = activeAlertId),
                         TimerEffect.ScheduleAlertTimeout(deadlineAtMillis = deadlineAt, timerGeneration = snapshot.timerGeneration, alertId = activeAlertId)
                     )
-                    if (nextTriggerAt != null) {
-                        effects.add(TimerEffect.ScheduleTimer(nextTriggerAt, snapshot.timerGeneration))
-                    }
-                    TransitionResult(newSnapshot, effects)
+                    TransitionResult(snapshot, effects)
                 }
             }
         }

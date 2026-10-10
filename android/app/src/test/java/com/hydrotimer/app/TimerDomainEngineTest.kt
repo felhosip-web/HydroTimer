@@ -68,47 +68,9 @@ class TimerDomainEngineTest {
         assertEquals(1001L, result.newSnapshot.lastAlertId)
         assertEquals(fixedNow, result.newSnapshot.alertStartedAt)
         assertEquals(fixedNow + 15_000L, result.newSnapshot.alertDeadlineAt)
-        assertEquals(fixedNow + 30 * 60_000L, result.newSnapshot.nextTriggerAt)
 
         assertTrue(result.effects.any { it is TimerEffect.ShowReminder && it.alertId == 1001L })
         assertTrue(result.effects.any { it is TimerEffect.ScheduleAlertTimeout && it.alertId == 1001L })
-        assertTrue(result.effects.any { it is TimerEffect.ScheduleTimer && it.triggerAtMillis == fixedNow + 30 * 60_000L })
-    }
-
-    @Test
-    fun testTimerTriggerSchedulesNextCycleImmediatelyAndAckPreservesIt() {
-        val triggerTime = fixedNow
-        val waiting = TimerSnapshot(
-            state = TimerState.WAITING,
-            timerGeneration = 1L,
-            nextTriggerAt = triggerTime
-        )
-
-        // 1. Timer triggers
-        val triggerRes = TimerDomainEngine.processEvent(
-            waiting,
-            TimerEvent(type = TimerEventType.TIMER_TRIGGER, timerGeneration = 1L, timestamp = triggerTime),
-            baseConfig,
-            triggerTime
-        )
-
-        val expectedNextTrigger = triggerTime + 30 * 60_000L
-        assertEquals(TimerState.ALERT_ACTIVE, triggerRes.newSnapshot.state)
-        assertEquals(expectedNextTrigger, triggerRes.newSnapshot.nextTriggerAt)
-        assertTrue(triggerRes.effects.any { it is TimerEffect.ScheduleTimer && it.triggerAtMillis == expectedNextTrigger })
-
-        // 2. User acknowledges 5 seconds later
-        val ackTime = triggerTime + 5000L
-        val ackRes = TimerDomainEngine.processEvent(
-            triggerRes.newSnapshot,
-            TimerEvent(type = TimerEventType.ACKNOWLEDGE, timerGeneration = 1L, alertId = triggerRes.newSnapshot.alertId, timestamp = ackTime),
-            baseConfig,
-            ackTime
-        )
-
-        assertEquals(TimerState.WAITING, ackRes.newSnapshot.state)
-        // nextTriggerAt MUST stay expectedNextTrigger (fixedNow + 30m), NOT shifted by ackTime
-        assertEquals(expectedNextTrigger, ackRes.newSnapshot.nextTriggerAt)
     }
 
     @Test
@@ -139,7 +101,6 @@ class TimerDomainEngineTest {
         assertTrue(staleAck1.effects.isEmpty())
     }
 
-    /** Verifies that an explicit generation mismatch leaves the waiting timer unchanged. */
     @Test
     fun testMissingGenerationIsIgnored() {
         val waiting = TimerSnapshot(state = TimerState.WAITING, timerGeneration = 5L, nextTriggerAt = fixedNow)
@@ -151,7 +112,6 @@ class TimerDomainEngineTest {
         assertTrue(result.effects.isEmpty())
     }
 
-    /** Verifies that an explicit alert ID mismatch leaves the active alert unchanged. */
     @Test
     fun testMissingAlertIdIsIgnored() {
         val alerting = TimerSnapshot(state = TimerState.ALERT_ACTIVE, timerGeneration = 5L, alertId = 200L)
@@ -163,7 +123,6 @@ class TimerDomainEngineTest {
         assertTrue(result.effects.isEmpty())
     }
 
-    /** Verifies that triggering schedules the next cycle and delayed acknowledgment preserves it. */
     @Test
     fun testTimerTriggerSchedulesNextCycleAndAckPreservesNextTriggerAt() {
         val waiting = TimerSnapshot(state = TimerState.WAITING, timerGeneration = 1L, nextTriggerAt = fixedNow)
