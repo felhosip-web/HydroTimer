@@ -16,6 +16,10 @@ class ReminderReceiver : BroadcastReceiver() {
         const val ACTION_ALERT_TIMEOUT = "com.hydrotimer.app.ACTION_ALERT_TIMEOUT"
     }
 
+    /**
+     * Handles reminder broadcasts, dispatching timer events with -1 for missing generation or alert IDs.
+     * A drink logged from a missed reminder updates intake and acknowledgment directly.
+     */
     override fun onReceive(context: Context, intent: Intent) {
         val timerManager = TimerManager(context)
         val gen = if (intent.hasExtra(TimerManager.EXTRA_TIMER_GENERATION)) {

@@ -61,7 +61,7 @@ describe('TimerDomainEngine Unit Tests', () => {
     expect(res.effects.some((e) => e.type === 'ScheduleAlertTimeout')).toBe(true);
   });
 
-  // 3. ALERT_ACTIVE -> ACKNOWLEDGE
+  /** Verifies that acknowledgment clears the alert and preserves its scheduled next trigger. */
   test('3. ALERT_ACTIVE -> ACKNOWLEDGE', () => {
     const now = 100000;
     const futureTriggerAt = now + 30 * 60 * 1000 - 5000; // scheduled 5s ago when trigger fired
@@ -83,7 +83,7 @@ describe('TimerDomainEngine Unit Tests', () => {
     expect(res.effects.some((e) => e.type === 'RecordAck')).toBe(true);
   });
 
-  // 3b. TIMER_TRIGGER immediately schedules next cycle and ACK keeps original trigger time
+  /** Verifies that triggering schedules the next cycle and delayed acknowledgment preserves it. */
   test('3b. TIMER_TRIGGER immediately schedules next cycle and ACK keeps original trigger time', () => {
     const triggerTime = 100000;
     const waitingSnap: TimerSnapshot = {
@@ -110,7 +110,7 @@ describe('TimerDomainEngine Unit Tests', () => {
     expect(ackRes.newSnapshot.nextTriggerAt).toBe(expectedNextTrigger);
   });
 
-  // 3c. Fallback -1 generation/alertId cleanly acknowledged
+  /** Verifies that -1 generation and alert IDs allow acknowledgment of the active alert. */
   test('3c. Fallback -1 generation/alertId cleanly acknowledged', () => {
     const now = 100000;
     const alertSnap: TimerSnapshot = {

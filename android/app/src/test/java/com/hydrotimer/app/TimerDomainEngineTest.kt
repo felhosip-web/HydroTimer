@@ -101,6 +101,7 @@ class TimerDomainEngineTest {
         assertTrue(staleAck1.effects.isEmpty())
     }
 
+    /** Verifies that an explicit generation mismatch leaves the waiting timer unchanged. */
     @Test
     fun testMissingGenerationIsIgnored() {
         val waiting = TimerSnapshot(state = TimerState.WAITING, timerGeneration = 5L, nextTriggerAt = fixedNow)
@@ -112,6 +113,7 @@ class TimerDomainEngineTest {
         assertTrue(result.effects.isEmpty())
     }
 
+    /** Verifies that an explicit alert ID mismatch leaves the active alert unchanged. */
     @Test
     fun testMissingAlertIdIsIgnored() {
         val alerting = TimerSnapshot(state = TimerState.ALERT_ACTIVE, timerGeneration = 5L, alertId = 200L)
@@ -123,6 +125,7 @@ class TimerDomainEngineTest {
         assertTrue(result.effects.isEmpty())
     }
 
+    /** Verifies that triggering schedules the next cycle and delayed acknowledgment preserves it. */
     @Test
     fun testTimerTriggerSchedulesNextCycleAndAckPreservesNextTriggerAt() {
         val waiting = TimerSnapshot(state = TimerState.WAITING, timerGeneration = 1L, nextTriggerAt = fixedNow)

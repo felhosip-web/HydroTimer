@@ -39,6 +39,7 @@ interface SmartwatchSimulatorProps {
   onUpdateQuietHours?: (enabled: boolean, start?: string, end?: string) => void;
 }
 
+/** Renders watch timer controls and alert actions for drinking or acknowledging without intake. */
 export const SmartwatchSimulator: React.FC<SmartwatchSimulatorProps> = ({
   config,
   remainingSeconds,
@@ -118,6 +119,7 @@ export const SmartwatchSimulator: React.FC<SmartwatchSimulatorProps> = ({
     }, 1200);
   };
 
+  /** Requests acknowledgment from the watch without water intake and shows feedback for 1.2 seconds. */
   const handleWatchOnlyAck = () => {
     setJustLogged(true);
     if (onAcknowledgeAlert) {

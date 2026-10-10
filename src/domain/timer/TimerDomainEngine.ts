@@ -87,6 +87,11 @@ export class TimerDomainEngine {
     return { newSnapshot, effects };
   }
 
+  /**
+   * Returns an alert transition and schedules the next interval cycle when a waiting timer fires.
+   * Missing or -1 generation IDs are accepted; explicit mismatches are ignored.
+   * Quiet hours and inactive days defer the alert. Countdowns do not schedule another cycle.
+   */
   private static handleTimerTrigger(
     snapshot: TimerSnapshot,
     event: TimerEvent,
@@ -167,6 +172,11 @@ export class TimerDomainEngine {
     return { newSnapshot, effects };
   }
 
+  /**
+   * Returns a transition that clears an active alert and records acknowledgment without water intake.
+   * Missing or -1 event IDs are accepted; explicit mismatches are ignored.
+   * Countdowns stop; intervals preserve the scheduled trigger or calculate one if absent.
+   */
   private static handleAcknowledge(
     snapshot: TimerSnapshot,
     event: TimerEvent,
@@ -234,6 +244,11 @@ export class TimerDomainEngine {
     }
   }
 
+  /**
+   * Returns a transition that clears an active alert and records the configured intake and acknowledgment.
+   * Missing or -1 event IDs are accepted; explicit mismatches are ignored.
+   * Countdowns stop; intervals preserve the scheduled trigger or calculate one if absent.
+   */
   private static handleDrink(
     snapshot: TimerSnapshot,
     event: TimerEvent,
@@ -304,6 +319,11 @@ export class TimerDomainEngine {
     }
   }
 
+  /**
+   * Returns a transition that clears an active alert and records and reports a missed reminder.
+   * Missing or -1 event IDs are accepted; explicit mismatches are ignored.
+   * Countdowns stop; intervals preserve the scheduled trigger or calculate one if absent.
+   */
   private static handleAlertTimeout(
     snapshot: TimerSnapshot,
     event: TimerEvent,
