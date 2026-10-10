@@ -186,7 +186,8 @@ class TimerManager(private val context: Context) {
             } else {
                 alarmManager.setExact(AlarmManager.RTC_WAKEUP, triggerAtMillis, pi)
             }
-        } catch (_: SecurityException) {
+        } catch (e: SecurityException) {
+            // Fallback when SCHEDULE_EXACT_ALARM permission is revoked or not granted
             alarmManager.set(AlarmManager.RTC_WAKEUP, triggerAtMillis, pi)
         }
     }
@@ -226,7 +227,8 @@ class TimerManager(private val context: Context) {
             } else {
                 alarmManager.setExact(AlarmManager.RTC_WAKEUP, deadlineAtMillis, pi)
             }
-        } catch (_: SecurityException) {
+        } catch (e: SecurityException) {
+            // Fallback when SCHEDULE_EXACT_ALARM permission is revoked or not granted
             alarmManager.set(AlarmManager.RTC_WAKEUP, deadlineAtMillis, pi)
         }
     }

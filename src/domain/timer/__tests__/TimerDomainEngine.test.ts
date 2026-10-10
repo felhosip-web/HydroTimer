@@ -58,14 +58,13 @@ describe('TimerDomainEngine Unit Tests', () => {
     expect(res.newSnapshot.alertId).toBe(1001);
     expect(res.newSnapshot.alertStartedAt).toBe(now);
     expect(res.newSnapshot.alertDeadlineAt).toBe(now + 15000);
-    expect(res.newSnapshot.nextTriggerAt).toBe(now + 30 * 60 * 1000);
     expect(res.effects.some((e) => e.type === 'ScheduleAlertTimeout')).toBe(true);
-    expect(res.effects.some((e) => e.type === 'ScheduleTimer' && e.triggerAtMillis === now + 30 * 60 * 1000)).toBe(true);
   });
 
   // 3. ALERT_ACTIVE -> ACKNOWLEDGE
   test('3. ALERT_ACTIVE -> ACKNOWLEDGE', () => {
     const now = 100000;
+    const futureTriggerAt = now + 30 * 60 * 1000 - 5000; // scheduled 5s ago when trigger fired
     const alertSnap: TimerSnapshot = {
       ...defaultSnapshot,
       state: 'ALERT_ACTIVE',
@@ -73,14 +72,141 @@ describe('TimerDomainEngine Unit Tests', () => {
       alertId: 1001,
       alertStartedAt: now - 5000,
       alertDeadlineAt: now + 10000,
+      nextTriggerAt: futureTriggerAt,
     };
     const event: TimerEvent = { type: 'ACKNOWLEDGE', timerGeneration: 1, alertId: 1001, timestamp: now };
     const res = TimerDomainEngine.processEvent(alertSnap, event, defaultConfig, now);
 
     expect(res.newSnapshot.state).toBe('WAITING');
     expect(res.newSnapshot.alertId).toBeNull();
-    expect(res.newSnapshot.nextTriggerAt).toBe(now + 30 * 60 * 1000);
+    expect(res.newSnapshot.nextTriggerAt).toBe(futureTriggerAt);
     expect(res.effects.some((e) => e.type === 'RecordAck')).toBe(true);
+  });
+
+  // 3b. TIMER_TRIGGER immediately schedules next cycle and ACK keeps original trigger time
+  test('3b. TIMER_TRIGGER immediately schedules next cycle and ACK keeps original trigger time', () => {
+    const triggerTime = 100000;
+    const waitingSnap: TimerSnapshot = {
+      ...defaultSnapshot,
+      state: 'WAITING',
+      timerGeneration: 1,
+      nextTriggerAt: triggerTime,
+    };
+    const triggerEvent: TimerEvent = { type: 'TIMER_TRIGGER', timerGeneration: 1, timestamp: triggerTime };
+    const alertRes = TimerDomainEngine.processEvent(waitingSnap, triggerEvent, defaultConfig, triggerTime);
+
+    const expectedNextTrigger = triggerTime + 30 * 60 * 1000;
+    expect(alertRes.newSnapshot.state).toBe('ALERT_ACTIVE');
+    expect(alertRes.newSnapshot.nextTriggerAt).toBe(expectedNextTrigger);
+    expect(alertRes.effects.some((e) => e.type === 'ScheduleTimer' && e.triggerAtMillis === expectedNextTrigger)).toBe(true);
+
+    // User acknowledges 10 seconds after trigger
+    const ackTime = triggerTime + 10000;
+    const ackEvent: TimerEvent = { type: 'ACKNOWLEDGE', timerGeneration: 1, alertId: alertRes.newSnapshot.alertId, timestamp: ackTime };
+    const ackRes = TimerDomainEngine.processEvent(alertRes.newSnapshot, ackEvent, defaultConfig, ackTime);
+
+    expect(ackRes.newSnapshot.state).toBe('WAITING');
+    // nextTriggerAt must stay as expectedNextTrigger (from cycle trigger time), NOT calculated from ackTime!
+    expect(ackRes.newSnapshot.nextTriggerAt).toBe(expectedNextTrigger);
+  });
+
+  // 3c. Missing or sentinel (-1) identifiers rejected by core state machine
+  test('3c. Missing or sentinel (-1) identifiers rejected by core state machine', () => {
+    const now = 100000;
+    const alertSnap: TimerSnapshot = {
+      ...defaultSnapshot,
+      state: 'ALERT_ACTIVE',
+      timerGeneration: 1,
+      alertId: 1001,
+      alertStartedAt: now - 2000,
+      alertDeadlineAt: now + 13000,
+      nextTriggerAt: now + 30 * 60 * 1000,
+    };
+
+    // Sentinel -1 rejected
+    const sentinelAck: TimerEvent = { type: 'ACKNOWLEDGE', timerGeneration: -1, alertId: -1, timestamp: now };
+    const resSentinel = TimerDomainEngine.processEvent(alertSnap, sentinelAck, defaultConfig, now);
+    expect(resSentinel.newSnapshot).toBe(alertSnap);
+
+    // Missing null/undefined rejected
+    const missingAck: TimerEvent = { type: 'ACKNOWLEDGE', timestamp: now };
+    const resMissing = TimerDomainEngine.processEvent(alertSnap, missingAck, defaultConfig, now);
+    expect(resMissing.newSnapshot).toBe(alertSnap);
+  });
+
+  // 3d. Countdown mode respects autoRestart setting across ACKNOWLEDGE, DRINK, and ALERT_TIMEOUT
+  test('3d. Countdown mode respects autoRestart setting', () => {
+    const now = 100000;
+    const countdownNoAutoConfig: EngineConfig = {
+      ...defaultConfig,
+      mode: 'countdown',
+      countdownMinutes: 5,
+      autoRestart: false,
+    };
+    const countdownAutoConfig: EngineConfig = {
+      ...defaultConfig,
+      mode: 'countdown',
+      countdownMinutes: 5,
+      autoRestart: true,
+    };
+
+    const alertSnap: TimerSnapshot = {
+      ...defaultSnapshot,
+      state: 'ALERT_ACTIVE',
+      timerGeneration: 1,
+      alertId: 1001,
+      alertStartedAt: now - 5000,
+      alertDeadlineAt: now + 10000,
+      nextTriggerAt: null,
+    };
+
+    // ACK with autoRestart = false -> STOPPED
+    const ackNoAuto = TimerDomainEngine.processEvent(alertSnap, { type: 'ACKNOWLEDGE', timerGeneration: 1, alertId: 1001, timestamp: now }, countdownNoAutoConfig, now);
+    expect(ackNoAuto.newSnapshot.state).toBe('STOPPED');
+
+    // ACK with autoRestart = true -> WAITING
+    const ackAuto = TimerDomainEngine.processEvent(alertSnap, { type: 'ACKNOWLEDGE', timerGeneration: 1, alertId: 1001, timestamp: now }, countdownAutoConfig, now);
+    expect(ackAuto.newSnapshot.state).toBe('WAITING');
+    expect(ackAuto.newSnapshot.nextTriggerAt).toBe(now + 5 * 60 * 1000);
+
+    // DRINK with autoRestart = true -> WAITING
+    const drinkAuto = TimerDomainEngine.processEvent(alertSnap, { type: 'DRINK', timerGeneration: 1, alertId: 1001, timestamp: now }, countdownAutoConfig, now);
+    expect(drinkAuto.newSnapshot.state).toBe('WAITING');
+
+    // TIMEOUT with autoRestart = true -> WAITING
+    const timeoutAuto = TimerDomainEngine.processEvent(alertSnap, { type: 'ALERT_TIMEOUT', timerGeneration: 1, alertId: 1001, timestamp: now }, countdownAutoConfig, now);
+    expect(timeoutAuto.newSnapshot.state).toBe('WAITING');
+  });
+
+  // 3e. Short interval scenario: TIMER_TRIGGER received during ALERT_ACTIVE advances nextTriggerAt
+  test('3e. TIMER_TRIGGER received during ALERT_ACTIVE advances nextTriggerAt without duplicate alerts', () => {
+    const startNow = 100000;
+    const shortIntervalConfig: EngineConfig = {
+      ...defaultConfig,
+      intervalMinutes: 1, // 60s interval
+      alertDurationSeconds: 120, // 120s alert window (interval < alert duration)
+    };
+
+    // First trigger at T=100000
+    const waitingSnap: TimerSnapshot = {
+      ...defaultSnapshot,
+      state: 'WAITING',
+      timerGeneration: 1,
+      nextTriggerAt: startNow,
+    };
+    const res1 = TimerDomainEngine.processEvent(waitingSnap, { type: 'TIMER_TRIGGER', timerGeneration: 1, timestamp: startNow }, shortIntervalConfig, startNow);
+    expect(res1.newSnapshot.state).toBe('ALERT_ACTIVE');
+    expect(res1.newSnapshot.nextTriggerAt).toBe(startNow + 60000);
+
+    // T=160000: Next interval trigger fires while state is still ALERT_ACTIVE
+    const trigger2Time = startNow + 60000;
+    const res2 = TimerDomainEngine.processEvent(res1.newSnapshot, { type: 'TIMER_TRIGGER', timerGeneration: 1, timestamp: trigger2Time }, shortIntervalConfig, trigger2Time);
+
+    // Should remain in ALERT_ACTIVE, advance nextTriggerAt to startNow + 120000, and schedule timer
+    expect(res2.newSnapshot.state).toBe('ALERT_ACTIVE');
+    expect(res2.newSnapshot.alertId).toBe(1001); // Same alertId, no duplicate alert created
+    expect(res2.newSnapshot.nextTriggerAt).toBe(trigger2Time + 60000);
+    expect(res2.effects.some((e) => e.type === 'ScheduleTimer' && e.triggerAtMillis === trigger2Time + 60000)).toBe(true);
   });
 
   // 4. ALERT_ACTIVE -> DRINK
@@ -413,42 +539,5 @@ describe('TimerDomainEngine Unit Tests', () => {
     // Restart with new config
     const resNew = TimerDomainEngine.processEvent(resOld.newSnapshot, { type: 'START', timestamp: now }, newConfig, now);
     expect(resNew.newSnapshot.nextTriggerAt).toBe(now + 60 * 60 * 1000);
-  });
-
-  // 21. TIMER_TRIGGER immediately schedules next cycle
-  test('21. TIMER_TRIGGER immediately schedules next cycle timestamp and ACK preserves it', () => {
-    const triggerTime = 100000;
-    const waitingSnap: TimerSnapshot = {
-      ...defaultSnapshot,
-      state: 'WAITING',
-      timerGeneration: 1,
-      nextTriggerAt: triggerTime,
-    };
-
-    // 1. Trigger fires at 100000
-    const triggerRes = TimerDomainEngine.processEvent(
-      waitingSnap,
-      { type: 'TIMER_TRIGGER', timerGeneration: 1, timestamp: triggerTime },
-      defaultConfig,
-      triggerTime
-    );
-
-    const expectedNextTrigger = triggerTime + 30 * 60 * 1000; // 100000 + 30m
-    expect(triggerRes.newSnapshot.state).toBe('ALERT_ACTIVE');
-    expect(triggerRes.newSnapshot.nextTriggerAt).toBe(expectedNextTrigger);
-    expect(triggerRes.effects.some((e) => e.type === 'ScheduleTimer' && e.triggerAtMillis === expectedNextTrigger)).toBe(true);
-
-    // 2. User acknowledges 5 seconds later
-    const ackTime = triggerTime + 5000;
-    const ackRes = TimerDomainEngine.processEvent(
-      triggerRes.newSnapshot,
-      { type: 'ACKNOWLEDGE', timerGeneration: 1, alertId: triggerRes.newSnapshot.alertId, timestamp: ackTime },
-      defaultConfig,
-      ackTime
-    );
-
-    expect(ackRes.newSnapshot.state).toBe('WAITING');
-    // nextTriggerAt MUST stay expectedNextTrigger (100000 + 30m), NOT shifted to (105000 + 30m)
-    expect(ackRes.newSnapshot.nextTriggerAt).toBe(expectedNextTrigger);
   });
 });
