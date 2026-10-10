@@ -18,15 +18,28 @@ class ReminderReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         val timerManager = TimerManager(context)
-        val gen = if (intent.hasExtra(TimerManager.EXTRA_TIMER_GENERATION)) {
-            intent.getLongExtra(TimerManager.EXTRA_TIMER_GENERATION, -1L)
-        } else -1L
-
-        val alertId = if (intent.hasExtra(TimerManager.EXTRA_ALERT_ID)) {
-            intent.getLongExtra(TimerManager.EXTRA_ALERT_ID, -1L)
-        } else -1L
-
         val now = System.currentTimeMillis()
+
+        var gen: Long? = if (intent.hasExtra(TimerManager.EXTRA_TIMER_GENERATION)) {
+            val value = intent.getLongExtra(TimerManager.EXTRA_TIMER_GENERATION, -1L)
+            if (value <= 0L) null else value
+        } else null
+
+        var alertId: Long? = if (intent.hasExtra(TimerManager.EXTRA_ALERT_ID)) {
+            val value = intent.getLongExtra(TimerManager.EXTRA_ALERT_ID, -1L)
+            if (value <= 0L) null else value
+        } else null
+
+        // Explicit, narrowly scoped compatibility fallback for active alerts when notification/watch actions lack IDs
+        val snapshot = timerManager.getSnapshot()
+        if (snapshot.state == TimerState.ALERT_ACTIVE) {
+            if (gen == null) {
+                gen = snapshot.timerGeneration
+            }
+            if (alertId == null) {
+                alertId = snapshot.alertId
+            }
+        }
 
         when (intent.action) {
             ACTION_TRIGGER_REMINDER -> {

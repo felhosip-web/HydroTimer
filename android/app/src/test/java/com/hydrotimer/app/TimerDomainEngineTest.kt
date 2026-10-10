@@ -104,9 +104,9 @@ class TimerDomainEngineTest {
     @Test
     fun testMissingGenerationIsIgnored() {
         val waiting = TimerSnapshot(state = TimerState.WAITING, timerGeneration = 5L, nextTriggerAt = fixedNow)
-        val wrongGenEvent = TimerEvent(type = TimerEventType.TIMER_TRIGGER, timerGeneration = 99L, timestamp = fixedNow)
+        val nullGenEvent = TimerEvent(type = TimerEventType.TIMER_TRIGGER, timerGeneration = null, timestamp = fixedNow)
 
-        val result = TimerDomainEngine.processEvent(waiting, wrongGenEvent, baseConfig, fixedNow)
+        val result = TimerDomainEngine.processEvent(waiting, nullGenEvent, baseConfig, fixedNow)
 
         assertEquals(waiting, result.newSnapshot)
         assertTrue(result.effects.isEmpty())
@@ -115,12 +115,52 @@ class TimerDomainEngineTest {
     @Test
     fun testMissingAlertIdIsIgnored() {
         val alerting = TimerSnapshot(state = TimerState.ALERT_ACTIVE, timerGeneration = 5L, alertId = 200L)
-        val wrongAlertIdAck = TimerEvent(type = TimerEventType.ACKNOWLEDGE, timerGeneration = 5L, alertId = 999L, timestamp = fixedNow)
+        val nullAlertIdAck = TimerEvent(type = TimerEventType.ACKNOWLEDGE, timerGeneration = 5L, alertId = null, timestamp = fixedNow)
 
-        val result = TimerDomainEngine.processEvent(alerting, wrongAlertIdAck, baseConfig, fixedNow)
+        val result = TimerDomainEngine.processEvent(alerting, nullAlertIdAck, baseConfig, fixedNow)
 
         assertEquals(alerting, result.newSnapshot)
         assertTrue(result.effects.isEmpty())
+    }
+
+    @Test
+    fun testCountdownAutoRestartSemantics() {
+        val countdownNoAutoConfig = baseConfig.copy(mode = "countdown", countdownMinutes = 5, autoRestart = false)
+        val countdownAutoConfig = baseConfig.copy(mode = "countdown", countdownMinutes = 5, autoRestart = true)
+
+        val alertSnap = TimerSnapshot(
+            state = TimerState.ALERT_ACTIVE,
+            timerGeneration = 1L,
+            alertId = 1001L,
+            alertStartedAt = fixedNow - 5000L,
+            alertDeadlineAt = fixedNow + 10_000L,
+            nextTriggerAt = null
+        )
+
+        val ackNoAuto = TimerDomainEngine.processEvent(alertSnap, TimerEvent(type = TimerEventType.ACKNOWLEDGE, timerGeneration = 1L, alertId = 1001L, timestamp = fixedNow), countdownNoAutoConfig, fixedNow)
+        assertEquals(TimerState.STOPPED, ackNoAuto.newSnapshot.state)
+
+        val ackAuto = TimerDomainEngine.processEvent(alertSnap, TimerEvent(type = TimerEventType.ACKNOWLEDGE, timerGeneration = 1L, alertId = 1001L, timestamp = fixedNow), countdownAutoConfig, fixedNow)
+        assertEquals(TimerState.WAITING, ackAuto.newSnapshot.state)
+        assertEquals(fixedNow + 5 * 60_000L, ackAuto.newSnapshot.nextTriggerAt)
+    }
+
+    @Test
+    fun testTriggerReceivedDuringAlertActiveAdvancesNextTriggerAt() {
+        val shortIntervalConfig = baseConfig.copy(intervalMinutes = 1, alertDurationSeconds = 120)
+        val waiting = TimerSnapshot(state = TimerState.WAITING, timerGeneration = 1L, nextTriggerAt = fixedNow)
+
+        val res1 = TimerDomainEngine.processEvent(waiting, TimerEvent(type = TimerEventType.TIMER_TRIGGER, timerGeneration = 1L, timestamp = fixedNow), shortIntervalConfig, fixedNow)
+        assertEquals(TimerState.ALERT_ACTIVE, res1.newSnapshot.state)
+        assertEquals(fixedNow + 60_000L, res1.newSnapshot.nextTriggerAt)
+
+        val trigger2Time = fixedNow + 60_000L
+        val res2 = TimerDomainEngine.processEvent(res1.newSnapshot, TimerEvent(type = TimerEventType.TIMER_TRIGGER, timerGeneration = 1L, timestamp = trigger2Time), shortIntervalConfig, trigger2Time)
+
+        assertEquals(TimerState.ALERT_ACTIVE, res2.newSnapshot.state)
+        assertEquals(1001L, res2.newSnapshot.alertId)
+        assertEquals(trigger2Time + 60_000L, res2.newSnapshot.nextTriggerAt)
+        assertTrue(res2.effects.any { it is TimerEffect.ScheduleTimer && it.triggerAtMillis == trigger2Time + 60_000L })
     }
 
     @Test
