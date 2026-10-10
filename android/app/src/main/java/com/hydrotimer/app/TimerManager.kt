@@ -180,10 +180,14 @@ class TimerManager(private val context: Context) {
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pi)
-        } else {
-            alarmManager.setExact(AlarmManager.RTC_WAKEUP, triggerAtMillis, pi)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pi)
+            } else {
+                alarmManager.setExact(AlarmManager.RTC_WAKEUP, triggerAtMillis, pi)
+            }
+        } catch (_: SecurityException) {
+            alarmManager.set(AlarmManager.RTC_WAKEUP, triggerAtMillis, pi)
         }
     }
 
@@ -216,10 +220,14 @@ class TimerManager(private val context: Context) {
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, deadlineAtMillis, pi)
-        } else {
-            alarmManager.setExact(AlarmManager.RTC_WAKEUP, deadlineAtMillis, pi)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, deadlineAtMillis, pi)
+            } else {
+                alarmManager.setExact(AlarmManager.RTC_WAKEUP, deadlineAtMillis, pi)
+            }
+        } catch (_: SecurityException) {
+            alarmManager.set(AlarmManager.RTC_WAKEUP, deadlineAtMillis, pi)
         }
     }
 

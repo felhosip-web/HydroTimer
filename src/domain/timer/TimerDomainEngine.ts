@@ -130,9 +130,10 @@ export class TimerDomainEngine {
     const alertDurationMs = Math.max(5, config.alertDurationSeconds) * 1000;
     const alertStartedAt = now;
     const alertDeadlineAt = now + alertDurationMs;
-
-    const isCountdown = config.mode === 'countdown';
-    const nextTriggerAt = isCountdown ? null : calculateNextTriggerAt(now, config);
+    const nextTriggerAt =
+      config.mode === 'interval' || config.autoRestart
+        ? calculateNextTriggerAt(now, config)
+        : null;
 
     const newSnapshot: TimerSnapshot = {
       ...snapshot,
@@ -207,7 +208,7 @@ export class TimerDomainEngine {
     const activeAlertId = snapshot.alertId ?? Math.max(1001, snapshot.lastAlertId);
     const isCountdown = config.mode === 'countdown';
 
-    if (isCountdown) {
+    if (isCountdown && !config.autoRestart) {
       const newSnapshot: TimerSnapshot = {
         ...snapshot,
         state: 'STOPPED',
@@ -224,7 +225,10 @@ export class TimerDomainEngine {
       ];
       return { newSnapshot, effects };
     } else {
-      const nextTriggerAt = snapshot.nextTriggerAt ?? calculateNextTriggerAt(now, config);
+      const nextTriggerAt =
+        snapshot.nextTriggerAt !== null && snapshot.nextTriggerAt > now
+          ? snapshot.nextTriggerAt
+          : calculateNextTriggerAt(now, config);
       const newSnapshot: TimerSnapshot = {
         ...snapshot,
         state: 'WAITING',
@@ -280,7 +284,7 @@ export class TimerDomainEngine {
     const intake = Math.max(0, config.intakePerAlertMl);
     const isCountdown = config.mode === 'countdown';
 
-    if (isCountdown) {
+    if (isCountdown && !config.autoRestart) {
       const newSnapshot: TimerSnapshot = {
         ...snapshot,
         state: 'STOPPED',
@@ -298,7 +302,10 @@ export class TimerDomainEngine {
       ];
       return { newSnapshot, effects };
     } else {
-      const nextTriggerAt = snapshot.nextTriggerAt ?? calculateNextTriggerAt(now, config);
+      const nextTriggerAt =
+        snapshot.nextTriggerAt !== null && snapshot.nextTriggerAt > now
+          ? snapshot.nextTriggerAt
+          : calculateNextTriggerAt(now, config);
       const newSnapshot: TimerSnapshot = {
         ...snapshot,
         state: 'WAITING',
@@ -359,7 +366,7 @@ export class TimerDomainEngine {
     const durationSec = Math.max(5, Math.floor(durationMs / 1000));
     const isCountdown = config.mode === 'countdown';
 
-    if (isCountdown) {
+    if (isCountdown && !config.autoRestart) {
       const newSnapshot: TimerSnapshot = {
         ...snapshot,
         state: 'STOPPED',
@@ -377,7 +384,10 @@ export class TimerDomainEngine {
       ];
       return { newSnapshot, effects };
     } else {
-      const nextTriggerAt = snapshot.nextTriggerAt ?? calculateNextTriggerAt(now, config);
+      const nextTriggerAt =
+        snapshot.nextTriggerAt !== null && snapshot.nextTriggerAt > now
+          ? snapshot.nextTriggerAt
+          : calculateNextTriggerAt(now, config);
       const newSnapshot: TimerSnapshot = {
         ...snapshot,
         state: 'WAITING',
@@ -456,8 +466,16 @@ export class TimerDomainEngine {
           return this.processEvent(snapshot, timeoutEvent, config, now);
         } else {
           const activeAlertId = snapshot.alertId ?? Math.max(1001, snapshot.lastAlertId);
+          const nextTriggerAt =
+            snapshot.nextTriggerAt !== null && snapshot.nextTriggerAt > now
+              ? snapshot.nextTriggerAt
+              : (config.mode === 'interval' || config.autoRestart ? calculateNextTriggerAt(now, config) : null);
+          const newSnapshot: TimerSnapshot = {
+            ...snapshot,
+            nextTriggerAt,
+          };
           const effects: TimerEffect[] = [
-            { type: 'PersistState', snapshot },
+            { type: 'PersistState', snapshot: newSnapshot },
             {
               type: 'ShowReminder',
               title: null,
@@ -472,7 +490,14 @@ export class TimerDomainEngine {
               alertId: activeAlertId,
             },
           ];
-          return { newSnapshot: snapshot, effects };
+          if (nextTriggerAt !== null) {
+            effects.push({
+              type: 'ScheduleTimer',
+              triggerAtMillis: nextTriggerAt,
+              timerGeneration: snapshot.timerGeneration,
+            });
+          }
+          return { newSnapshot, effects };
         }
       }
     }
