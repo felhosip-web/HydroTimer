@@ -259,6 +259,13 @@ describe('TimerDomainEngine Unit Tests', () => {
     expect(resDelayed.newSnapshot.alertId).toBe(1001);
     expect(resDelayed.newSnapshot.nextTriggerAt).toBe(delayedTime + 60000);
     expect(resDelayed.effects.some((e) => e.type === 'ScheduleTimer' && e.triggerAtMillis === delayedTime + 60000)).toBe(true);
+
+    // 3f-3. Repeated/old duplicate trigger arriving after schedule was already advanced to T=260s is strictly ignored
+    const oldDuplicateTime = startNow + 120000; // T=220s (arrives before the new nextTriggerAt T=260s)
+    const resOldDuplicate = TimerDomainEngine.processEvent(resDelayed.newSnapshot, { type: 'TIMER_TRIGGER', timerGeneration: 1, timestamp: oldDuplicateTime }, shortConfig, oldDuplicateTime);
+
+    expect(resOldDuplicate.newSnapshot).toBe(resDelayed.newSnapshot);
+    expect(resOldDuplicate.effects.length).toBe(0);
   });
 
   // 3g. Stale action delivered after newer alert starts is rejected

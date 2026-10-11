@@ -190,6 +190,13 @@ class TimerDomainEngineTest {
         assertEquals(1001L, resDelayed.newSnapshot.alertId)
         assertEquals(delayedTime + 60_000L, resDelayed.newSnapshot.nextTriggerAt)
         assertTrue(resDelayed.effects.any { it is TimerEffect.ScheduleTimer && it.triggerAtMillis == delayedTime + 60_000L })
+
+        // Repeated duplicate trigger arriving before the newly scheduled triggerAt is strictly ignored
+        val duplicateTime = fixedNow + 120_000L
+        val resOldDuplicate = TimerDomainEngine.processEvent(resDelayed.newSnapshot, TimerEvent(type = TimerEventType.TIMER_TRIGGER, timerGeneration = 1L, timestamp = duplicateTime), shortConfig, duplicateTime)
+
+        assertEquals(resDelayed.newSnapshot, resOldDuplicate.newSnapshot)
+        assertTrue(resOldDuplicate.effects.isEmpty())
     }
 
     @Test
