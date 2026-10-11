@@ -388,7 +388,7 @@ export const DailyStats: React.FC<DailyStatsProps> = ({
               <button
                 onClick={() => {
                   const val = parseInt(tempGoalVal, 10);
-                  if (!isNaN(val) && val >= 500 && onUpdateDailyGoal) {
+                  if (!isNaN(val) && val >= 500 && val <= 10000 && onUpdateDailyGoal) {
                     onUpdateDailyGoal(val);
                   }
                   setIsEditingGoalModal(false);

@@ -176,6 +176,23 @@ class TimerDomainEngineTest {
     }
 
     @Test
+    fun testDelayedTriggerSubstantiallyAfterNextTriggerAtDuringAlertActiveAdvancesSchedule() {
+        val shortConfig = baseConfig.copy(intervalMinutes = 1, alertDurationSeconds = 300)
+        val waiting = TimerSnapshot(state = TimerState.WAITING, timerGeneration = 1L, nextTriggerAt = fixedNow)
+
+        val res1 = TimerDomainEngine.processEvent(waiting, TimerEvent(type = TimerEventType.TIMER_TRIGGER, timerGeneration = 1L, timestamp = fixedNow), shortConfig, fixedNow)
+        assertEquals(fixedNow + 60_000L, res1.newSnapshot.nextTriggerAt)
+
+        val delayedTime = fixedNow + 100_000L
+        val resDelayed = TimerDomainEngine.processEvent(res1.newSnapshot, TimerEvent(type = TimerEventType.TIMER_TRIGGER, timerGeneration = 1L, timestamp = delayedTime), shortConfig, delayedTime)
+
+        assertEquals(TimerState.ALERT_ACTIVE, resDelayed.newSnapshot.state)
+        assertEquals(1001L, resDelayed.newSnapshot.alertId)
+        assertEquals(delayedTime + 60_000L, resDelayed.newSnapshot.nextTriggerAt)
+        assertTrue(resDelayed.effects.any { it is TimerEffect.ScheduleTimer && it.triggerAtMillis == delayedTime + 60_000L })
+    }
+
+    @Test
     fun testStaleActionDeliveredAfterNewerAlertStartsIsRejected() {
         val alert1Time = fixedNow
         val alert1Snap = TimerSnapshot(

@@ -231,6 +231,36 @@ describe('TimerDomainEngine Unit Tests', () => {
     expect(resDuplicate.effects.length).toBe(0);
   });
 
+  // 3f-2. TIMER_TRIGGER delivered substantially AFTER nextTriggerAt during ALERT_ACTIVE handles delayed trigger predictably
+  test('3f-2. TIMER_TRIGGER delivered substantially AFTER nextTriggerAt during ALERT_ACTIVE advances nextTriggerAt predictably', () => {
+    const startNow = 100000; // T=100s
+    const shortConfig: EngineConfig = {
+      ...defaultConfig,
+      intervalMinutes: 1, // 60s
+      alertDurationSeconds: 300, // 300s alert window
+    };
+
+    // First trigger at T=100s
+    const waitingSnap: TimerSnapshot = {
+      ...defaultSnapshot,
+      state: 'WAITING',
+      timerGeneration: 1,
+      nextTriggerAt: startNow,
+    };
+    const res1 = TimerDomainEngine.processEvent(waitingSnap, { type: 'TIMER_TRIGGER', timerGeneration: 1, timestamp: startNow }, shortConfig, startNow);
+    expect(res1.newSnapshot.nextTriggerAt).toBe(startNow + 60000); // scheduled for T=160s
+
+    // Delayed trigger arrives at T=200s (substantially AFTER nextTriggerAt of 160s)
+    const delayedTime = startNow + 100000; // T=200s
+    const resDelayed = TimerDomainEngine.processEvent(res1.newSnapshot, { type: 'TIMER_TRIGGER', timerGeneration: 1, timestamp: delayedTime }, shortConfig, delayedTime);
+
+    // Engine advances nextTriggerAt to T=260s without creating duplicate alerts or resetting active alert
+    expect(resDelayed.newSnapshot.state).toBe('ALERT_ACTIVE');
+    expect(resDelayed.newSnapshot.alertId).toBe(1001);
+    expect(resDelayed.newSnapshot.nextTriggerAt).toBe(delayedTime + 60000);
+    expect(resDelayed.effects.some((e) => e.type === 'ScheduleTimer' && e.triggerAtMillis === delayedTime + 60000)).toBe(true);
+  });
+
   // 3g. Stale action delivered after newer alert starts is rejected
   test('3g. Stale action delivered after newer alert starts is rejected', () => {
     const alert1Time = 100000;
