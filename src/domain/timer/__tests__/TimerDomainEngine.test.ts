@@ -209,6 +209,59 @@ describe('TimerDomainEngine Unit Tests', () => {
     expect(res2.effects.some((e) => e.type === 'ScheduleTimer' && e.triggerAtMillis === trigger2Time + 60000)).toBe(true);
   });
 
+  // 3f. Duplicate or stale triggers received during ALERT_ACTIVE before nextTriggerAt are strictly ignored
+  test('3f. Duplicate or stale triggers received during ALERT_ACTIVE before nextTriggerAt are strictly ignored', () => {
+    const startNow = 100000;
+    const waitingSnap: TimerSnapshot = {
+      ...defaultSnapshot,
+      state: 'WAITING',
+      timerGeneration: 1,
+      nextTriggerAt: startNow,
+    };
+
+    const res1 = TimerDomainEngine.processEvent(waitingSnap, { type: 'TIMER_TRIGGER', timerGeneration: 1, timestamp: startNow }, defaultConfig, startNow);
+    const expectedNextTrigger = startNow + 30 * 60 * 1000;
+    expect(res1.newSnapshot.nextTriggerAt).toBe(expectedNextTrigger);
+
+    // Duplicate trigger 5s later (before scheduled nextTriggerAt)
+    const duplicateTriggerTime = startNow + 5000;
+    const resDuplicate = TimerDomainEngine.processEvent(res1.newSnapshot, { type: 'TIMER_TRIGGER', timerGeneration: 1, timestamp: duplicateTriggerTime }, defaultConfig, duplicateTriggerTime);
+
+    expect(resDuplicate.newSnapshot).toBe(res1.newSnapshot);
+    expect(resDuplicate.effects.length).toBe(0);
+  });
+
+  // 3g. Stale action delivered after newer alert starts is rejected
+  test('3g. Stale action delivered after newer alert starts is rejected', () => {
+    const alert1Time = 100000;
+    const alert1Snap: TimerSnapshot = {
+      ...defaultSnapshot,
+      state: 'ALERT_ACTIVE',
+      timerGeneration: 1,
+      alertId: 1001,
+      lastAlertId: 1001,
+      alertStartedAt: alert1Time,
+      alertDeadlineAt: alert1Time + 15000,
+      nextTriggerAt: alert1Time + 30 * 60 * 1000,
+    };
+
+    // Alert 1 times out
+    const timeout1Res = TimerDomainEngine.processEvent(alert1Snap, { type: 'ALERT_TIMEOUT', timerGeneration: 1, alertId: 1001, timestamp: alert1Time + 15000 }, defaultConfig, alert1Time + 15000);
+    expect(timeout1Res.newSnapshot.state).toBe('WAITING');
+
+    // Alert 2 fires later
+    const alert2Time = alert1Time + 30 * 60 * 1000;
+    const alert2Res = TimerDomainEngine.processEvent(timeout1Res.newSnapshot, { type: 'TIMER_TRIGGER', timerGeneration: 1, timestamp: alert2Time }, defaultConfig, alert2Time);
+    expect(alert2Res.newSnapshot.alertId).toBe(1002);
+
+    // Delayed ACK for Alert 1001 arrives now
+    const staleAckRes = TimerDomainEngine.processEvent(alert2Res.newSnapshot, { type: 'ACKNOWLEDGE', timerGeneration: 1, alertId: 1001, timestamp: alert2Time + 2000 }, defaultConfig, alert2Time + 2000);
+
+    // Must be rejected!
+    expect(staleAckRes.newSnapshot).toBe(alert2Res.newSnapshot);
+    expect(staleAckRes.effects.length).toBe(0);
+  });
+
   // 4. ALERT_ACTIVE -> DRINK
   test('4. ALERT_ACTIVE -> DRINK', () => {
     const now = 100000;

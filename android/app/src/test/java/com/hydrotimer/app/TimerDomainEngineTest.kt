@@ -164,6 +164,44 @@ class TimerDomainEngineTest {
     }
 
     @Test
+    fun testDuplicateTriggerDuringAlertActiveBeforeNextTriggerAtIsIgnored() {
+        val waiting = TimerSnapshot(state = TimerState.WAITING, timerGeneration = 1L, nextTriggerAt = fixedNow)
+        val res1 = TimerDomainEngine.processEvent(waiting, TimerEvent(type = TimerEventType.TIMER_TRIGGER, timerGeneration = 1L, timestamp = fixedNow), baseConfig, fixedNow)
+
+        val duplicateTime = fixedNow + 5000L
+        val resDuplicate = TimerDomainEngine.processEvent(res1.newSnapshot, TimerEvent(type = TimerEventType.TIMER_TRIGGER, timerGeneration = 1L, timestamp = duplicateTime), baseConfig, duplicateTime)
+
+        assertEquals(res1.newSnapshot, resDuplicate.newSnapshot)
+        assertTrue(resDuplicate.effects.isEmpty())
+    }
+
+    @Test
+    fun testStaleActionDeliveredAfterNewerAlertStartsIsRejected() {
+        val alert1Time = fixedNow
+        val alert1Snap = TimerSnapshot(
+            state = TimerState.ALERT_ACTIVE,
+            timerGeneration = 1L,
+            alertId = 1001L,
+            lastAlertId = 1001L,
+            alertStartedAt = alert1Time,
+            alertDeadlineAt = alert1Time + 15_000L,
+            nextTriggerAt = alert1Time + 30 * 60_000L
+        )
+
+        val timeout1Res = TimerDomainEngine.processEvent(alert1Snap, TimerEvent(type = TimerEventType.ALERT_TIMEOUT, timerGeneration = 1L, alertId = 1001L, timestamp = alert1Time + 15_000L), baseConfig, alert1Time + 15_000L)
+        assertEquals(TimerState.WAITING, timeout1Res.newSnapshot.state)
+
+        val alert2Time = alert1Time + 30 * 60_000L
+        val alert2Res = TimerDomainEngine.processEvent(timeout1Res.newSnapshot, TimerEvent(type = TimerEventType.TIMER_TRIGGER, timerGeneration = 1L, timestamp = alert2Time), baseConfig, alert2Time)
+        assertEquals(1002L, alert2Res.newSnapshot.alertId)
+
+        val staleAckRes = TimerDomainEngine.processEvent(alert2Res.newSnapshot, TimerEvent(type = TimerEventType.ACKNOWLEDGE, timerGeneration = 1L, alertId = 1001L, timestamp = alert2Time + 2000L), baseConfig, alert2Time + 2000L)
+
+        assertEquals(alert2Res.newSnapshot, staleAckRes.newSnapshot)
+        assertTrue(staleAckRes.effects.isEmpty())
+    }
+
+    @Test
     fun testTimerTriggerSchedulesNextCycleAndAckPreservesNextTriggerAt() {
         val waiting = TimerSnapshot(state = TimerState.WAITING, timerGeneration = 1L, nextTriggerAt = fixedNow)
         val triggerResult = TimerDomainEngine.processEvent(waiting, TimerEvent(type = TimerEventType.TIMER_TRIGGER, timerGeneration = 1L, timestamp = fixedNow), baseConfig, fixedNow)
