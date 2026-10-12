@@ -54,6 +54,7 @@ class TimerManager(private val context: Context) {
 
         const val EXTRA_TIMER_GENERATION = "com.hydrotimer.app.EXTRA_TIMER_GENERATION"
         const val EXTRA_ALERT_ID = "com.hydrotimer.app.EXTRA_ALERT_ID"
+        const val EXTRA_SCHEDULED_AT = "com.hydrotimer.app.EXTRA_SCHEDULED_AT"
     }
 
     fun getSnapshot(): TimerSnapshot {
@@ -173,6 +174,7 @@ class TimerManager(private val context: Context) {
         val intent = Intent(context, ReminderReceiver::class.java).apply {
             action = ReminderReceiver.ACTION_TRIGGER_REMINDER
             putExtra(EXTRA_TIMER_GENERATION, timerGeneration)
+            putExtra(EXTRA_SCHEDULED_AT, triggerAtMillis)
         }
         val pi = PendingIntent.getBroadcast(
             context,

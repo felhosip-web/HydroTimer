@@ -141,6 +141,7 @@ export function useTimerController({
           type: scheduledEvent.type,
           timerGeneration: scheduledEvent.timerGeneration,
           alertId: scheduledEvent.alertId,
+          scheduledAt: scheduledEvent.scheduledAt,
           timestamp: scheduledEvent.timestamp,
         });
       });

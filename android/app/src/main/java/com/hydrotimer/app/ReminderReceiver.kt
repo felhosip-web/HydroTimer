@@ -30,10 +30,15 @@ class ReminderReceiver : BroadcastReceiver() {
             if (value <= 0L) null else value
         } else null
 
+        val scheduledAt: Long? = if (intent.hasExtra(TimerManager.EXTRA_SCHEDULED_AT)) {
+            val value = intent.getLongExtra(TimerManager.EXTRA_SCHEDULED_AT, -1L)
+            if (value <= 0L) null else value
+        } else null
+
         when (intent.action) {
             ACTION_TRIGGER_REMINDER -> {
                 timerManager.dispatch(
-                    TimerEvent(TimerEventType.TIMER_TRIGGER, timerGeneration = gen, timestamp = now),
+                    TimerEvent(TimerEventType.TIMER_TRIGGER, timerGeneration = gen, scheduledAt = scheduledAt, timestamp = now),
                     now
                 )
             }

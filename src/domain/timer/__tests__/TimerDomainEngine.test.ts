@@ -268,6 +268,52 @@ describe('TimerDomainEngine Unit Tests', () => {
     expect(resOldDuplicate.effects.length).toBe(0);
   });
 
+  // 3f-4. Precise scheduledAt token validation across duplicates, stale triggers, and legitimate next-interval triggers
+  test('3f-4. Precise scheduledAt token validation across duplicates, stale triggers, and legitimate next-interval triggers', () => {
+    const t0 = 100000; // T0 = 100s
+    const t1 = t0 + 60000; // T1 = 160s (first scheduled trigger)
+    const shortConfig: EngineConfig = { ...defaultConfig, intervalMinutes: 1, alertDurationSeconds: 300 };
+
+    const waitingSnap: TimerSnapshot = {
+      ...defaultSnapshot,
+      state: 'WAITING',
+      timerGeneration: 1,
+      nextTriggerAt: t1,
+    };
+
+    // Legitimate trigger at T1 with scheduledAt = T1
+    const trig1 = TimerDomainEngine.processEvent(waitingSnap, { type: 'TIMER_TRIGGER', timerGeneration: 1, scheduledAt: t1, timestamp: t1 }, shortConfig, t1);
+    const t2 = t1 + 60000; // T2 = 220s
+    expect(trig1.newSnapshot.state).toBe('ALERT_ACTIVE');
+    expect(trig1.newSnapshot.nextTriggerAt).toBe(t2);
+
+    // Duplicate of T1 trigger arrives at T1 + 5s (scheduledAt = T1, but current nextTriggerAt = T2)
+    const dupT1 = TimerDomainEngine.processEvent(trig1.newSnapshot, { type: 'TIMER_TRIGGER', timerGeneration: 1, scheduledAt: t1, timestamp: t1 + 5000 }, shortConfig, t1 + 5000);
+    expect(dupT1.newSnapshot).toBe(trig1.newSnapshot);
+    expect(dupT1.effects.length).toBe(0);
+
+    // Legitimate trigger for T2 arrives at T2 (scheduledAt = T2)
+    const trig2 = TimerDomainEngine.processEvent(trig1.newSnapshot, { type: 'TIMER_TRIGGER', timerGeneration: 1, scheduledAt: t2, timestamp: t2 }, shortConfig, t2);
+    const t3 = t2 + 60000; // T3 = 280s
+    expect(trig2.newSnapshot.state).toBe('ALERT_ACTIVE');
+    expect(trig2.newSnapshot.nextTriggerAt).toBe(t3);
+
+    // Stale duplicate of T1 trigger arrives at T2 + 10s (scheduledAt = T1, current nextTriggerAt = T3) -> REJECTED
+    const staleT1AtT2 = TimerDomainEngine.processEvent(trig2.newSnapshot, { type: 'TIMER_TRIGGER', timerGeneration: 1, scheduledAt: t1, timestamp: t2 + 10000 }, shortConfig, t2 + 10000);
+    expect(staleT1AtT2.newSnapshot).toBe(trig2.newSnapshot);
+    expect(staleT1AtT2.effects.length).toBe(0);
+
+    // Trigger carrying obsolete timerGeneration = 0 -> REJECTED
+    const obsoleteGenTrig = TimerDomainEngine.processEvent(trig2.newSnapshot, { type: 'TIMER_TRIGGER', timerGeneration: 0, scheduledAt: t3, timestamp: t3 }, shortConfig, t3);
+    expect(obsoleteGenTrig.newSnapshot).toBe(trig2.newSnapshot);
+    expect(obsoleteGenTrig.effects.length).toBe(0);
+
+    // Repeated delivery of legitimate T2 trigger at T2 + 10s (scheduledAt = T2, current nextTriggerAt = T3) -> REJECTED IDEMPOTENTLY
+    const repeatedT2 = TimerDomainEngine.processEvent(trig2.newSnapshot, { type: 'TIMER_TRIGGER', timerGeneration: 1, scheduledAt: t2, timestamp: t2 + 10000 }, shortConfig, t2 + 10000);
+    expect(repeatedT2.newSnapshot).toBe(trig2.newSnapshot);
+    expect(repeatedT2.effects.length).toBe(0);
+  });
+
   // 3g. Stale action delivered after newer alert starts is rejected
   test('3g. Stale action delivered after newer alert starts is rejected', () => {
     const alert1Time = 100000;

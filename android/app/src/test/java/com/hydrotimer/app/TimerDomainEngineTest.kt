@@ -200,6 +200,47 @@ class TimerDomainEngineTest {
     }
 
     @Test
+    fun testPreciseScheduledAtTokenValidationAcrossDuplicatesAndStaleTriggers() {
+        val t0 = fixedNow // T0
+        val t1 = t0 + 60_000L // T1 = T0 + 60s
+        val shortConfig = baseConfig.copy(intervalMinutes = 1, alertDurationSeconds = 300)
+
+        val waitingSnap = TimerSnapshot(state = TimerState.WAITING, timerGeneration = 1L, nextTriggerAt = t1)
+
+        // Legitimate trigger at T1 with scheduledAt = T1
+        val trig1 = TimerDomainEngine.processEvent(waitingSnap, TimerEvent(type = TimerEventType.TIMER_TRIGGER, timerGeneration = 1L, scheduledAt = t1, timestamp = t1), shortConfig, t1)
+        val t2 = t1 + 60_000L // T2 = T1 + 60s
+        assertEquals(TimerState.ALERT_ACTIVE, trig1.newSnapshot.state)
+        assertEquals(t2, trig1.newSnapshot.nextTriggerAt)
+
+        // Duplicate of T1 trigger arrives at T1 + 5s (scheduledAt = T1, but current nextTriggerAt = T2)
+        val dupT1 = TimerDomainEngine.processEvent(trig1.newSnapshot, TimerEvent(type = TimerEventType.TIMER_TRIGGER, timerGeneration = 1L, scheduledAt = t1, timestamp = t1 + 5000L), shortConfig, t1 + 5000L)
+        assertEquals(trig1.newSnapshot, dupT1.newSnapshot)
+        assertTrue(dupT1.effects.isEmpty())
+
+        // Legitimate trigger for T2 arrives at T2 (scheduledAt = T2)
+        val trig2 = TimerDomainEngine.processEvent(trig1.newSnapshot, TimerEvent(type = TimerEventType.TIMER_TRIGGER, timerGeneration = 1L, scheduledAt = t2, timestamp = t2), shortConfig, t2)
+        val t3 = t2 + 60_000L // T3 = T2 + 60s
+        assertEquals(TimerState.ALERT_ACTIVE, trig2.newSnapshot.state)
+        assertEquals(t3, trig2.newSnapshot.nextTriggerAt)
+
+        // Stale duplicate of T1 trigger arrives at T2 + 10s (scheduledAt = T1, current nextTriggerAt = T3) -> REJECTED
+        val staleT1AtT2 = TimerDomainEngine.processEvent(trig2.newSnapshot, TimerEvent(type = TimerEventType.TIMER_TRIGGER, timerGeneration = 1L, scheduledAt = t1, timestamp = t2 + 10_000L), shortConfig, t2 + 10_000L)
+        assertEquals(trig2.newSnapshot, staleT1AtT2.newSnapshot)
+        assertTrue(staleT1AtT2.effects.isEmpty())
+
+        // Trigger carrying obsolete timerGeneration = 0 -> REJECTED
+        val obsoleteGenTrig = TimerDomainEngine.processEvent(trig2.newSnapshot, TimerEvent(type = TimerEventType.TIMER_TRIGGER, timerGeneration = 0L, scheduledAt = t3, timestamp = t3), shortConfig, t3)
+        assertEquals(trig2.newSnapshot, obsoleteGenTrig.newSnapshot)
+        assertTrue(obsoleteGenTrig.effects.isEmpty())
+
+        // Repeated delivery of legitimate T2 trigger at T2 + 10s (scheduledAt = T2, current nextTriggerAt = T3) -> REJECTED IDEMPOTENTLY
+        val repeatedT2 = TimerDomainEngine.processEvent(trig2.newSnapshot, TimerEvent(type = TimerEventType.TIMER_TRIGGER, timerGeneration = 1L, scheduledAt = t2, timestamp = t2 + 10_000L), shortConfig, t2 + 10_000L)
+        assertEquals(trig2.newSnapshot, repeatedT2.newSnapshot)
+        assertTrue(repeatedT2.effects.isEmpty())
+    }
+
+    @Test
     fun testStaleActionDeliveredAfterNewerAlertStartsIsRejected() {
         val alert1Time = fixedNow
         val alert1Snap = TimerSnapshot(

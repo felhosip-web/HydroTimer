@@ -101,6 +101,16 @@ export class TimerDomainEngine {
       return { newSnapshot: snapshot, effects: [] };
     }
 
+    // Validate scheduledAt token against snapshot.nextTriggerAt if provided
+    if (
+      event.scheduledAt !== undefined &&
+      event.scheduledAt !== null &&
+      snapshot.nextTriggerAt !== null &&
+      event.scheduledAt !== snapshot.nextTriggerAt
+    ) {
+      return { newSnapshot: snapshot, effects: [] };
+    }
+
     if (snapshot.state === 'ALERT_ACTIVE') {
       // Short interval scenario where next trigger arrives while alert is still active
       if (snapshot.nextTriggerAt !== null && now >= snapshot.nextTriggerAt) {

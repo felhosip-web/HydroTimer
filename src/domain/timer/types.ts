@@ -39,6 +39,7 @@ export interface TimerEvent {
   type: TimerEventType;
   timerGeneration?: number | null;
   alertId?: number | null;
+  scheduledAt?: number | null;
   timestamp: number;
 }
 
