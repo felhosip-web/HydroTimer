@@ -101,7 +101,7 @@ export class TimerDomainEngine {
       return { newSnapshot: snapshot, effects: [] };
     }
 
-    // Validate scheduledAt token against snapshot.nextTriggerAt if provided
+    // Validate scheduledAt token when explicitly provided in the event
     if (
       event.scheduledAt !== undefined &&
       event.scheduledAt !== null &&

@@ -123,15 +123,16 @@ describe('TimerDomainEngine Unit Tests', () => {
       nextTriggerAt: now + 30 * 60 * 1000,
     };
 
-    // Sentinel -1 rejected
+    // Sentinel -1 rejected for ACK
     const sentinelAck: TimerEvent = { type: 'ACKNOWLEDGE', timerGeneration: -1, alertId: -1, timestamp: now };
     const resSentinel = TimerDomainEngine.processEvent(alertSnap, sentinelAck, defaultConfig, now);
     expect(resSentinel.newSnapshot).toBe(alertSnap);
 
-    // Missing null/undefined rejected
+    // Missing null/undefined rejected for ACK
     const missingAck: TimerEvent = { type: 'ACKNOWLEDGE', timestamp: now };
     const resMissing = TimerDomainEngine.processEvent(alertSnap, missingAck, defaultConfig, now);
     expect(resMissing.newSnapshot).toBe(alertSnap);
+
   });
 
   // 3d. Countdown mode respects autoRestart setting across ACKNOWLEDGE, DRINK, and ALERT_TIMEOUT

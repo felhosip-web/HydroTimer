@@ -89,7 +89,7 @@ class MainActivity : AppCompatActivity() {
                 timerManager.startTimer()
                 snapshot = timerManager.getSnapshot()
             }
-            timerManager.dispatch(TimerEvent(TimerEventType.TIMER_TRIGGER, timerGeneration = snapshot.timerGeneration, timestamp = System.currentTimeMillis()))
+            timerManager.dispatch(TimerEvent(TimerEventType.TIMER_TRIGGER, timerGeneration = snapshot.timerGeneration, scheduledAt = snapshot.nextTriggerAt, timestamp = System.currentTimeMillis()))
             val alertDuration = timerManager.getAlertDurationSeconds()
             Toast.makeText(this, "🔊 Riasztás elküldve! ($alertDuration mp nyugtázási ablak)", Toast.LENGTH_SHORT).show()
         }

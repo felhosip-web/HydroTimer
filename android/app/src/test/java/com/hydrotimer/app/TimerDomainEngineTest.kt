@@ -104,13 +104,14 @@ class TimerDomainEngineTest {
     @Test
     fun testMissingGenerationIsIgnored() {
         val waiting = TimerSnapshot(state = TimerState.WAITING, timerGeneration = 5L, nextTriggerAt = fixedNow)
-        val nullGenEvent = TimerEvent(type = TimerEventType.TIMER_TRIGGER, timerGeneration = null, timestamp = fixedNow)
+        val nullGenEvent = TimerEvent(type = TimerEventType.TIMER_TRIGGER, timerGeneration = null, scheduledAt = fixedNow, timestamp = fixedNow)
 
         val result = TimerDomainEngine.processEvent(waiting, nullGenEvent, baseConfig, fixedNow)
 
         assertEquals(waiting, result.newSnapshot)
         assertTrue(result.effects.isEmpty())
     }
+
 
     @Test
     fun testMissingAlertIdIsIgnored() {
