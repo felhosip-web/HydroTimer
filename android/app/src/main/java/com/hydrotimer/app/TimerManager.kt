@@ -271,7 +271,7 @@ class TimerManager(private val context: Context) {
 
     fun scheduleNextOccurrence() {
         val snapshot = getSnapshot()
-        dispatch(TimerEvent(TimerEventType.TIMER_TRIGGER, timerGeneration = snapshot.timerGeneration, timestamp = System.currentTimeMillis()))
+        dispatch(TimerEvent(TimerEventType.TIMER_TRIGGER, timerGeneration = snapshot.timerGeneration, scheduledAt = snapshot.nextTriggerAt, timestamp = System.currentTimeMillis()))
     }
 
     fun scheduleAlertTimeout() {

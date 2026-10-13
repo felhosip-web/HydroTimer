@@ -225,6 +225,7 @@ export function useTimerController({
     dispatch({
       type: 'TIMER_TRIGGER',
       timerGeneration: current.timerGeneration,
+      scheduledAt: current.nextTriggerAt,
       timestamp: Date.now(),
     });
   }, [dispatch]);

@@ -91,7 +91,7 @@ object TimerDomainEngine {
             return TransitionResult(snapshot, emptyList())
         }
 
-        if (event.scheduledAt != null && snapshot.nextTriggerAt != null && event.scheduledAt != snapshot.nextTriggerAt) {
+        if (snapshot.nextTriggerAt != null && (event.scheduledAt == null || event.scheduledAt != snapshot.nextTriggerAt)) {
             return TransitionResult(snapshot, emptyList())
         }
 
@@ -371,6 +371,7 @@ object TimerDomainEngine {
                         val triggerEvent = TimerEvent(
                             type = TimerEventType.TIMER_TRIGGER,
                             timerGeneration = snapshot.timerGeneration,
+                            scheduledAt = targetAt,
                             timestamp = now
                         )
                         processEvent(snapshot, triggerEvent, config, now)

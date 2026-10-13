@@ -101,12 +101,12 @@ export class TimerDomainEngine {
       return { newSnapshot: snapshot, effects: [] };
     }
 
-    // Validate scheduledAt token when explicitly provided in the event
+    // Strictly require scheduledAt to match snapshot.nextTriggerAt whenever snapshot.nextTriggerAt is present
     if (
-      event.scheduledAt !== undefined &&
-      event.scheduledAt !== null &&
       snapshot.nextTriggerAt !== null &&
-      event.scheduledAt !== snapshot.nextTriggerAt
+      (event.scheduledAt === undefined ||
+        event.scheduledAt === null ||
+        event.scheduledAt !== snapshot.nextTriggerAt)
     ) {
       return { newSnapshot: snapshot, effects: [] };
     }
@@ -438,6 +438,7 @@ export class TimerDomainEngine {
             const triggerEvent: TimerEvent = {
               type: 'TIMER_TRIGGER',
               timerGeneration: snapshot.timerGeneration,
+              scheduledAt: targetAt,
               timestamp: now,
             };
             return this.processEvent(snapshot, triggerEvent, config, now);
