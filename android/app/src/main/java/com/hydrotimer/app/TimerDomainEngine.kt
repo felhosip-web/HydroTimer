@@ -91,7 +91,7 @@ object TimerDomainEngine {
             return TransitionResult(snapshot, emptyList())
         }
 
-        if (snapshot.nextTriggerAt != null && (event.scheduledAt == null || event.scheduledAt != snapshot.nextTriggerAt)) {
+        if (snapshot.nextTriggerAt == null || event.scheduledAt == null || event.scheduledAt != snapshot.nextTriggerAt) {
             return TransitionResult(snapshot, emptyList())
         }
 

@@ -101,12 +101,13 @@ export class TimerDomainEngine {
       return { newSnapshot: snapshot, effects: [] };
     }
 
-    // Strictly require scheduledAt to match snapshot.nextTriggerAt whenever snapshot.nextTriggerAt is present
+    // Strictly require event.scheduledAt to equal snapshot.nextTriggerAt when nextTriggerAt is set;
+    // if snapshot.nextTriggerAt is null (or missing), TIMER_TRIGGER is invalid and rejected.
     if (
-      snapshot.nextTriggerAt !== null &&
-      (event.scheduledAt === undefined ||
-        event.scheduledAt === null ||
-        event.scheduledAt !== snapshot.nextTriggerAt)
+      snapshot.nextTriggerAt === null ||
+      event.scheduledAt === undefined ||
+      event.scheduledAt === null ||
+      event.scheduledAt !== snapshot.nextTriggerAt
     ) {
       return { newSnapshot: snapshot, effects: [] };
     }

@@ -75,7 +75,7 @@ class TimerDomainEngineTest {
 
     @Test
     fun testMonotonicAlertIdIncrementsAcrossMultipleAlertCycles() {
-        val waiting1 = TimerSnapshot(state = TimerState.WAITING, timerGeneration = 1L, lastAlertId = 0L)
+        val waiting1 = TimerSnapshot(state = TimerState.WAITING, timerGeneration = 1L, lastAlertId = 0L, nextTriggerAt = fixedNow)
         val res1 = TimerDomainEngine.processEvent(waiting1, TimerEvent(type = TimerEventType.TIMER_TRIGGER, timerGeneration = 1L, scheduledAt = fixedNow, timestamp = fixedNow), baseConfig, fixedNow)
         assertEquals(1001L, res1.newSnapshot.alertId)
         assertEquals(1001L, res1.newSnapshot.lastAlertId)
