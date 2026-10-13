@@ -133,6 +133,35 @@ describe('TimerDomainEngine Unit Tests', () => {
     const resMissing = TimerDomainEngine.processEvent(alertSnap, missingAck, defaultConfig, now);
     expect(resMissing.newSnapshot).toBe(alertSnap);
 
+    // Missing scheduledAt for TIMER_TRIGGER when nextTriggerAt is set -> REJECTED
+    const waitingSnap: TimerSnapshot = {
+      ...defaultSnapshot,
+      state: 'WAITING',
+      timerGeneration: 1,
+      nextTriggerAt: now,
+    };
+    const missingScheduledAtTrig: TimerEvent = { type: 'TIMER_TRIGGER', timerGeneration: 1, timestamp: now };
+    const resMissingScheduledAt = TimerDomainEngine.processEvent(waitingSnap, missingScheduledAtTrig, defaultConfig, now);
+    expect(resMissingScheduledAt.newSnapshot).toBe(waitingSnap);
+    expect(resMissingScheduledAt.effects.length).toBe(0);
+
+    // null scheduledAt for TIMER_TRIGGER when nextTriggerAt is set -> REJECTED
+    const nullScheduledAtTrig: TimerEvent = { type: 'TIMER_TRIGGER', timerGeneration: 1, scheduledAt: null, timestamp: now };
+    const resNullScheduledAt = TimerDomainEngine.processEvent(waitingSnap, nullScheduledAtTrig, defaultConfig, now);
+    expect(resNullScheduledAt.newSnapshot).toBe(waitingSnap);
+    expect(resNullScheduledAt.effects.length).toBe(0);
+
+    // TIMER_TRIGGER when snapshot.nextTriggerAt is null -> REJECTED (even if event has scheduledAt timestamp)
+    const nullNextTriggerSnap: TimerSnapshot = {
+      ...defaultSnapshot,
+      state: 'WAITING',
+      timerGeneration: 1,
+      nextTriggerAt: null,
+    };
+    const trigWithNullNextTrigger: TimerEvent = { type: 'TIMER_TRIGGER', timerGeneration: 1, scheduledAt: now, timestamp: now };
+    const resNullNextTrigger = TimerDomainEngine.processEvent(nullNextTriggerSnap, trigWithNullNextTrigger, defaultConfig, now);
+    expect(resNullNextTrigger.newSnapshot).toBe(nullNextTriggerSnap);
+    expect(resNullNextTrigger.effects.length).toBe(0);
   });
 
   // 3d. Countdown mode respects autoRestart setting across ACKNOWLEDGE, DRINK, and ALERT_TIMEOUT
