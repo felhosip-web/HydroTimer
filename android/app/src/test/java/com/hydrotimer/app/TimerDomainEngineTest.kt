@@ -114,6 +114,23 @@ class TimerDomainEngineTest {
         assertTrue(result.effects.isEmpty())
     }
 
+    @Test
+    fun testMissingScheduledAtOrNullNextTriggerAtIsIgnored() {
+        val waiting = TimerSnapshot(state = TimerState.WAITING, timerGeneration = 5L, nextTriggerAt = fixedNow)
+        val nullScheduledAtEvent = TimerEvent(type = TimerEventType.TIMER_TRIGGER, timerGeneration = 5L, scheduledAt = null, timestamp = fixedNow)
+
+        val result1 = TimerDomainEngine.processEvent(waiting, nullScheduledAtEvent, baseConfig, fixedNow)
+        assertEquals(waiting, result1.newSnapshot)
+        assertTrue(result1.effects.isEmpty())
+
+        val nullNextTriggerSnap = TimerSnapshot(state = TimerState.WAITING, timerGeneration = 5L, nextTriggerAt = null)
+        val trigWithNullNextTrigger = TimerEvent(type = TimerEventType.TIMER_TRIGGER, timerGeneration = 5L, scheduledAt = fixedNow, timestamp = fixedNow)
+
+        val result2 = TimerDomainEngine.processEvent(nullNextTriggerSnap, trigWithNullNextTrigger, baseConfig, fixedNow)
+        assertEquals(nullNextTriggerSnap, result2.newSnapshot)
+        assertTrue(result2.effects.isEmpty())
+    }
+
 
     @Test
     fun testMissingAlertIdIsIgnored() {
