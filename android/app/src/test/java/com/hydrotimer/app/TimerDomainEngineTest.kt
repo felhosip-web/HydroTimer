@@ -451,20 +451,48 @@ class TimerDomainEngineTest {
 
     @Test
     fun testRecoveryDuringAlertActiveFutureDeadlineDoesNotGenerateNewAlertId() {
+        val nextTriggerAt = fixedNow + 30 * 60_000L
         val alerting = TimerSnapshot(
             state = TimerState.ALERT_ACTIVE,
             timerGeneration = 5L,
             alertId = 777L,
             lastAlertId = 777L,
             alertStartedAt = fixedNow - 5000L,
-            alertDeadlineAt = fixedNow + 10_000L
+            alertDeadlineAt = fixedNow + 10_000L,
+            nextTriggerAt = nextTriggerAt
         )
 
         val result = TimerDomainEngine.processEvent(alerting, TimerEvent(type = TimerEventType.RECOVER, timestamp = fixedNow), baseConfig, fixedNow)
 
         assertEquals(TimerState.ALERT_ACTIVE, result.newSnapshot.state)
         assertEquals(777L, result.newSnapshot.alertId)
+        assertEquals(nextTriggerAt, result.newSnapshot.nextTriggerAt)
         assertTrue(result.effects.any { it is TimerEffect.ScheduleAlertTimeout && it.alertId == 777L })
+        assertTrue(result.effects.any { it is TimerEffect.ScheduleTimer && it.triggerAtMillis == nextTriggerAt })
+
+        // Repeated recovery does not shift schedule or generate new alertId
+        val result2 = TimerDomainEngine.processEvent(result.newSnapshot, TimerEvent(type = TimerEventType.RECOVER, timestamp = fixedNow + 1000L), baseConfig, fixedNow + 1000L)
+        assertEquals(nextTriggerAt, result2.newSnapshot.nextTriggerAt)
+        assertEquals(777L, result2.newSnapshot.alertId)
+    }
+
+    @Test
+    fun testRecoveryDuringAlertActiveWithNullNextTriggerAtDoesNotInventTimestamp() {
+        val alerting = TimerSnapshot(
+            state = TimerState.ALERT_ACTIVE,
+            timerGeneration = 5L,
+            alertId = 777L,
+            lastAlertId = 777L,
+            alertStartedAt = fixedNow - 5000L,
+            alertDeadlineAt = fixedNow + 10_000L,
+            nextTriggerAt = null
+        )
+
+        val result = TimerDomainEngine.processEvent(alerting, TimerEvent(type = TimerEventType.RECOVER, timestamp = fixedNow), baseConfig, fixedNow)
+
+        assertEquals(TimerState.ALERT_ACTIVE, result.newSnapshot.state)
+        assertNull(result.newSnapshot.nextTriggerAt)
+        assertTrue(result.effects.none { it is TimerEffect.ScheduleTimer })
     }
 
     @Test

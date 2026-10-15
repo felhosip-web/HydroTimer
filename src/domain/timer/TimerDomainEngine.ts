@@ -491,6 +491,13 @@ export class TimerDomainEngine {
               alertId: activeAlertId,
             },
           ];
+          if (snapshot.nextTriggerAt !== null) {
+            effects.push({
+              type: 'ScheduleTimer',
+              triggerAtMillis: snapshot.nextTriggerAt,
+              timerGeneration: snapshot.timerGeneration,
+            });
+          }
           return { newSnapshot: snapshot, effects };
         }
       }

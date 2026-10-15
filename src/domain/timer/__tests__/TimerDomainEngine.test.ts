@@ -552,6 +552,7 @@ describe('TimerDomainEngine Unit Tests', () => {
   // 14. reload/recovery active ALERT
   test('14. reload/recovery active ALERT', () => {
     const now = 100000;
+    const nextTriggerAt = now + 30 * 60 * 1000;
     const activeAlertSnap: TimerSnapshot = {
       ...defaultSnapshot,
       state: 'ALERT_ACTIVE',
@@ -559,12 +560,42 @@ describe('TimerDomainEngine Unit Tests', () => {
       alertId: 1001,
       alertStartedAt: now - 5000,
       alertDeadlineAt: now + 10000,
+      nextTriggerAt,
     };
     const recoverEvent: TimerEvent = { type: 'RECOVER', timestamp: now };
     const res = TimerDomainEngine.processEvent(activeAlertSnap, recoverEvent, defaultConfig, now);
 
     expect(res.newSnapshot.state).toBe('ALERT_ACTIVE');
+    expect(res.newSnapshot.nextTriggerAt).toBe(nextTriggerAt);
+    expect(res.newSnapshot.timerGeneration).toBe(1);
+    expect(res.newSnapshot.alertId).toBe(1001);
     expect(res.effects.some((e) => e.type === 'ScheduleAlertTimeout' && e.deadlineAtMillis === now + 10000)).toBe(true);
+    expect(res.effects.some((e) => e.type === 'ScheduleTimer' && e.triggerAtMillis === nextTriggerAt)).toBe(true);
+
+    // Repeated recovery does not shift schedule or change alertId
+    const res2 = TimerDomainEngine.processEvent(res.newSnapshot, recoverEvent, defaultConfig, now + 1000);
+    expect(res2.newSnapshot.nextTriggerAt).toBe(nextTriggerAt);
+    expect(res2.newSnapshot.alertId).toBe(1001);
+  });
+
+  // 14b. reload/recovery active ALERT with null nextTriggerAt does not invent a nextTriggerAt
+  test('14b. reload/recovery active ALERT with null nextTriggerAt does not invent a nextTriggerAt', () => {
+    const now = 100000;
+    const activeAlertSnapNoNext: TimerSnapshot = {
+      ...defaultSnapshot,
+      state: 'ALERT_ACTIVE',
+      timerGeneration: 1,
+      alertId: 1001,
+      alertStartedAt: now - 5000,
+      alertDeadlineAt: now + 10000,
+      nextTriggerAt: null,
+    };
+    const recoverEvent: TimerEvent = { type: 'RECOVER', timestamp: now };
+    const res = TimerDomainEngine.processEvent(activeAlertSnapNoNext, recoverEvent, defaultConfig, now);
+
+    expect(res.newSnapshot.state).toBe('ALERT_ACTIVE');
+    expect(res.newSnapshot.nextTriggerAt).toBeNull();
+    expect(res.effects.some((e) => e.type === 'ScheduleTimer')).toBe(false);
   });
 
   // 15. expired ALERT recovery

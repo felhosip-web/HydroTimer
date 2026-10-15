@@ -404,11 +404,14 @@ object TimerDomainEngine {
                     processEvent(snapshot, timeoutEvent, config, now)
                 } else {
                     val activeAlertId = snapshot.alertId ?: Math.max(1001L, snapshot.lastAlertId)
-                    val effects = listOf(
+                    val effects = mutableListOf<TimerEffect>(
                         TimerEffect.PersistState(snapshot),
                         TimerEffect.ShowReminder(title = null, body = null, timerGeneration = snapshot.timerGeneration, alertId = activeAlertId),
                         TimerEffect.ScheduleAlertTimeout(deadlineAtMillis = deadlineAt, timerGeneration = snapshot.timerGeneration, alertId = activeAlertId)
                     )
+                    if (snapshot.nextTriggerAt != null) {
+                        effects.add(TimerEffect.ScheduleTimer(snapshot.nextTriggerAt, snapshot.timerGeneration))
+                    }
                     TransitionResult(snapshot, effects)
                 }
             }
