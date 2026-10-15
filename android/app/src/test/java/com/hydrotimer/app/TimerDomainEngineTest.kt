@@ -438,6 +438,51 @@ class TimerDomainEngineTest {
     }
 
     @Test
+    fun testExpiredWaitingStateDispatchesTriggerWithExactScheduledAt() {
+        val pastTriggerAt = fixedNow - 5000L
+        val waiting = TimerSnapshot(state = TimerState.WAITING, timerGeneration = 3L, nextTriggerAt = pastTriggerAt)
+
+        val triggerEvent = TimerEvent(
+            type = TimerEventType.TIMER_TRIGGER,
+            timerGeneration = 3L,
+            scheduledAt = pastTriggerAt,
+            timestamp = fixedNow
+        )
+
+        val result = TimerDomainEngine.processEvent(waiting, triggerEvent, baseConfig, fixedNow)
+
+        assertEquals(TimerState.ALERT_ACTIVE, result.newSnapshot.state)
+        assertEquals(3L, result.newSnapshot.timerGeneration)
+        assertNotNull(result.newSnapshot.alertId)
+    }
+
+    @Test
+    fun testExpiredAlertActiveStateDispatchesTimeoutWithCorrectIds() {
+        val pastDeadlineAt = fixedNow - 2000L
+        val alerting = TimerSnapshot(
+            state = TimerState.ALERT_ACTIVE,
+            timerGeneration = 3L,
+            alertId = 1005L,
+            alertStartedAt = pastDeadlineAt - 15_000L,
+            alertDeadlineAt = pastDeadlineAt,
+            nextTriggerAt = fixedNow + 30 * 60_000L
+        )
+
+        val timeoutEvent = TimerEvent(
+            type = TimerEventType.ALERT_TIMEOUT,
+            timerGeneration = 3L,
+            alertId = 1005L,
+            timestamp = fixedNow
+        )
+
+        val result = TimerDomainEngine.processEvent(alerting, timeoutEvent, baseConfig, fixedNow)
+
+        assertEquals(TimerState.WAITING, result.newSnapshot.state)
+        assertNull(result.newSnapshot.alertId)
+        assertTrue(result.effects.any { it is TimerEffect.RecordMissed })
+    }
+
+    @Test
     fun testRecoveryDuringWaitingLongDowntimeAdvancesToNextTriggerWithoutStaleAlert() {
         val longPastTime = fixedNow - 3600_000L
         val waiting = TimerSnapshot(state = TimerState.WAITING, timerGeneration = 2L, nextTriggerAt = longPastTime)
