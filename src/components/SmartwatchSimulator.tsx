@@ -119,9 +119,16 @@ export const SmartwatchSimulator: React.FC<SmartwatchSimulatorProps> = ({
   };
 
   const handleWatchOnlyAck = () => {
+    setJustLogged(true);
     if (onAcknowledgeAlert) {
       onAcknowledgeAlert(false, true);
     }
+    setTimeout(() => {
+      setJustLogged(false);
+      if (!isAlerting) {
+        setIsWatchVibrating(false);
+      }
+    }, 1200);
   };
 
   const handleTestWatchHaptic = () => {
@@ -224,7 +231,7 @@ export const SmartwatchSimulator: React.FC<SmartwatchSimulatorProps> = ({
         {/* Secondary Side Button */}
         <button
           id="watch-secondary-button"
-          onClick={handleWatchDrink}
+          onClick={isAlerting ? handleWatchOnlyAck : handleWatchDrink}
           title="Gyors gomb: Nyugtázás"
           className="absolute -right-2.5 bottom-16 w-3 h-7 bg-slate-700 hover:bg-slate-600 rounded-r shadow border-y border-r border-slate-600 active:scale-95 cursor-pointer z-20"
         ></button>
@@ -406,9 +413,19 @@ export const SmartwatchSimulator: React.FC<SmartwatchSimulatorProps> = ({
                       whileHover={{ scale: 1.05 }}
                       whileTap={{ scale: 0.92 }}
                       onClick={handleWatchDrink}
-                      className="w-full max-w-[170px] py-1.5 px-2.5 rounded-full text-xs font-extrabold bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-lg shadow-emerald-500/30 flex items-center justify-center gap-1 animate-pulse"
+                      className="w-full max-w-[170px] py-1 px-2 rounded-full text-[11px] font-extrabold bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-lg shadow-emerald-500/30 flex items-center justify-center gap-1 animate-pulse"
                     >
-                      <Check className="w-3.5 h-3.5" />
+                      <Droplets className="w-3.5 h-3.5" />
+                      <span>Ivás &amp; Nyugtázás</span>
+                    </motion.button>
+                    <motion.button
+                      id="watch-only-ack-action-btn"
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.92 }}
+                      onClick={handleWatchOnlyAck}
+                      className="w-full max-w-[170px] py-1 px-2 rounded-full text-[10px] font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center justify-center gap-1"
+                    >
+                      <Check className="w-3 h-3 text-sky-400" />
                       <span>Nyugtázás</span>
                     </motion.button>
                   </div>

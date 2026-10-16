@@ -28,6 +28,8 @@ export class TimerDomainEngine {
         return this.handleAlertTimeout(snapshot, event, config, now);
       case 'RECOVER':
         return this.handleRecover(snapshot, config, now);
+      case 'TEST_ALERT':
+        return this.handleTestAlert(snapshot, config, now);
     }
   }
 
@@ -93,10 +95,47 @@ export class TimerDomainEngine {
     config: EngineConfig,
     now: number
   ): TransitionResult {
-    if (snapshot.state !== 'WAITING') {
+    if (
+      event.timerGeneration === undefined ||
+      event.timerGeneration === null ||
+      event.timerGeneration !== snapshot.timerGeneration
+    ) {
       return { newSnapshot: snapshot, effects: [] };
     }
-    if (event.timerGeneration === undefined || event.timerGeneration === null || event.timerGeneration !== snapshot.timerGeneration) {
+
+    // Strictly require event.scheduledAt to equal snapshot.nextTriggerAt when nextTriggerAt is set;
+    // if snapshot.nextTriggerAt is null (or missing), TIMER_TRIGGER is invalid and rejected.
+    if (
+      snapshot.nextTriggerAt === null ||
+      event.scheduledAt === undefined ||
+      event.scheduledAt === null ||
+      event.scheduledAt !== snapshot.nextTriggerAt
+    ) {
+      return { newSnapshot: snapshot, effects: [] };
+    }
+
+    if (snapshot.state === 'ALERT_ACTIVE') {
+      // Short interval scenario where next trigger arrives while alert is still active
+      if (snapshot.nextTriggerAt !== null && now >= snapshot.nextTriggerAt) {
+        const shouldRestart = config.mode !== 'countdown' || config.autoRestart !== false;
+        if (!shouldRestart) {
+          return { newSnapshot: snapshot, effects: [] };
+        }
+        const updatedNextTriggerAt = calculateNextTriggerAt(now, config);
+        const newSnapshot: TimerSnapshot = {
+          ...snapshot,
+          nextTriggerAt: updatedNextTriggerAt,
+        };
+        const effects: TimerEffect[] = [
+          { type: 'PersistState', snapshot: newSnapshot },
+          { type: 'ScheduleTimer', triggerAtMillis: updatedNextTriggerAt, timerGeneration: snapshot.timerGeneration },
+        ];
+        return { newSnapshot, effects };
+      }
+      return { newSnapshot: snapshot, effects: [] };
+    }
+
+    if (snapshot.state !== 'WAITING') {
       return { newSnapshot: snapshot, effects: [] };
     }
 
@@ -120,10 +159,9 @@ export class TimerDomainEngine {
     const alertDurationMs = Math.max(5, config.alertDurationSeconds) * 1000;
     const alertStartedAt = now;
     const alertDeadlineAt = now + alertDurationMs;
-    const nextTriggerAt =
-      config.mode === 'interval' || config.autoRestart
-        ? calculateNextTriggerAt(now, config)
-        : null;
+
+    const shouldAutoRestart = config.mode !== 'countdown' || config.autoRestart !== false;
+    const nextTriggerAt = shouldAutoRestart ? calculateNextTriggerAt(now, config) : null;
 
     const newSnapshot: TimerSnapshot = {
       ...snapshot,
@@ -172,17 +210,26 @@ export class TimerDomainEngine {
     if (snapshot.state !== 'ALERT_ACTIVE') {
       return { newSnapshot: snapshot, effects: [] };
     }
-    if (event.timerGeneration === undefined || event.timerGeneration === null || event.timerGeneration !== snapshot.timerGeneration) {
+    if (
+      event.timerGeneration === undefined ||
+      event.timerGeneration === null ||
+      event.timerGeneration !== snapshot.timerGeneration
+    ) {
       return { newSnapshot: snapshot, effects: [] };
     }
-    if (snapshot.alertId === null || event.alertId === undefined || event.alertId === null || event.alertId !== snapshot.alertId) {
+    if (
+      snapshot.alertId === null ||
+      event.alertId === undefined ||
+      event.alertId === null ||
+      event.alertId !== snapshot.alertId
+    ) {
       return { newSnapshot: snapshot, effects: [] };
     }
 
     const activeAlertId = snapshot.alertId;
-    const isCountdown = config.mode === 'countdown';
+    const shouldAutoRestart = config.mode !== 'countdown' || config.autoRestart !== false;
 
-    if (isCountdown && !config.autoRestart) {
+    if (!shouldAutoRestart) {
       const newSnapshot: TimerSnapshot = {
         ...snapshot,
         state: 'STOPPED',
@@ -203,6 +250,7 @@ export class TimerDomainEngine {
         snapshot.nextTriggerAt !== null && snapshot.nextTriggerAt > now
           ? snapshot.nextTriggerAt
           : calculateNextTriggerAt(now, config);
+
       const newSnapshot: TimerSnapshot = {
         ...snapshot,
         state: 'WAITING',
@@ -231,18 +279,27 @@ export class TimerDomainEngine {
     if (snapshot.state !== 'ALERT_ACTIVE') {
       return { newSnapshot: snapshot, effects: [] };
     }
-    if (event.timerGeneration === undefined || event.timerGeneration === null || event.timerGeneration !== snapshot.timerGeneration) {
+    if (
+      event.timerGeneration === undefined ||
+      event.timerGeneration === null ||
+      event.timerGeneration !== snapshot.timerGeneration
+    ) {
       return { newSnapshot: snapshot, effects: [] };
     }
-    if (snapshot.alertId === null || event.alertId === undefined || event.alertId === null || event.alertId !== snapshot.alertId) {
+    if (
+      snapshot.alertId === null ||
+      event.alertId === undefined ||
+      event.alertId === null ||
+      event.alertId !== snapshot.alertId
+    ) {
       return { newSnapshot: snapshot, effects: [] };
     }
 
     const activeAlertId = snapshot.alertId;
     const intake = Math.max(0, config.intakePerAlertMl);
-    const isCountdown = config.mode === 'countdown';
+    const shouldAutoRestart = config.mode !== 'countdown' || config.autoRestart !== false;
 
-    if (isCountdown && !config.autoRestart) {
+    if (!shouldAutoRestart) {
       const newSnapshot: TimerSnapshot = {
         ...snapshot,
         state: 'STOPPED',
@@ -264,6 +321,7 @@ export class TimerDomainEngine {
         snapshot.nextTriggerAt !== null && snapshot.nextTriggerAt > now
           ? snapshot.nextTriggerAt
           : calculateNextTriggerAt(now, config);
+
       const newSnapshot: TimerSnapshot = {
         ...snapshot,
         state: 'WAITING',
@@ -293,10 +351,19 @@ export class TimerDomainEngine {
     if (snapshot.state !== 'ALERT_ACTIVE') {
       return { newSnapshot: snapshot, effects: [] };
     }
-    if (event.timerGeneration === undefined || event.timerGeneration === null || event.timerGeneration !== snapshot.timerGeneration) {
+    if (
+      event.timerGeneration === undefined ||
+      event.timerGeneration === null ||
+      event.timerGeneration !== snapshot.timerGeneration
+    ) {
       return { newSnapshot: snapshot, effects: [] };
     }
-    if (snapshot.alertId === null || event.alertId === undefined || event.alertId === null || event.alertId !== snapshot.alertId) {
+    if (
+      snapshot.alertId === null ||
+      event.alertId === undefined ||
+      event.alertId === null ||
+      event.alertId !== snapshot.alertId
+    ) {
       return { newSnapshot: snapshot, effects: [] };
     }
 
@@ -306,9 +373,9 @@ export class TimerDomainEngine {
         ? snapshot.alertDeadlineAt - snapshot.alertStartedAt
         : Math.max(5, config.alertDurationSeconds) * 1000;
     const durationSec = Math.max(5, Math.floor(durationMs / 1000));
-    const isCountdown = config.mode === 'countdown';
+    const shouldAutoRestart = config.mode !== 'countdown' || config.autoRestart !== false;
 
-    if (isCountdown && !config.autoRestart) {
+    if (!shouldAutoRestart) {
       const newSnapshot: TimerSnapshot = {
         ...snapshot,
         state: 'STOPPED',
@@ -330,6 +397,7 @@ export class TimerDomainEngine {
         snapshot.nextTriggerAt !== null && snapshot.nextTriggerAt > now
           ? snapshot.nextTriggerAt
           : calculateNextTriggerAt(now, config);
+
       const newSnapshot: TimerSnapshot = {
         ...snapshot,
         state: 'WAITING',
@@ -346,6 +414,88 @@ export class TimerDomainEngine {
         { type: 'ShowMissedNotification', alertDurationSeconds: durationSec },
         { type: 'ScheduleTimer', triggerAtMillis: nextTriggerAt, timerGeneration: snapshot.timerGeneration },
       ];
+      return { newSnapshot, effects };
+    }
+  }
+
+  private static handleTestAlert(
+    snapshot: TimerSnapshot,
+    config: EngineConfig,
+    now: number
+  ): TransitionResult {
+    if (snapshot.state === 'ALERT_ACTIVE') {
+      return { newSnapshot: snapshot, effects: [] };
+    }
+
+    const alertDurationMs = Math.max(5, config.alertDurationSeconds) * 1000;
+    const alertStartedAt = now;
+    const alertDeadlineAt = now + alertDurationMs;
+    const nextAlertId = Math.max(1000, snapshot.lastAlertId) + 1;
+
+    if (snapshot.state === 'STOPPED') {
+      const nextGen = snapshot.timerGeneration + 1;
+      const nextTriggerAt = calculateNextTriggerAt(now, config);
+      const newSnapshot: TimerSnapshot = {
+        state: 'ALERT_ACTIVE',
+        timerGeneration: nextGen,
+        alertId: nextAlertId,
+        lastAlertId: nextAlertId,
+        nextTriggerAt,
+        alertStartedAt,
+        alertDeadlineAt,
+      };
+
+      const effects: TimerEffect[] = [
+        { type: 'PersistState', snapshot: newSnapshot },
+        {
+          type: 'ShowReminder',
+          title: null,
+          body: null,
+          timerGeneration: nextGen,
+          alertId: nextAlertId,
+        },
+        {
+          type: 'ScheduleAlertTimeout',
+          deadlineAtMillis: alertDeadlineAt,
+          timerGeneration: nextGen,
+          alertId: nextAlertId,
+        },
+        {
+          type: 'ScheduleTimer',
+          triggerAtMillis: nextTriggerAt,
+          timerGeneration: nextGen,
+        },
+      ];
+
+      return { newSnapshot, effects };
+    } else {
+      // WAITING state: keep existing timerGeneration and nextTriggerAt
+      const newSnapshot: TimerSnapshot = {
+        ...snapshot,
+        state: 'ALERT_ACTIVE',
+        alertId: nextAlertId,
+        lastAlertId: nextAlertId,
+        alertStartedAt,
+        alertDeadlineAt,
+      };
+
+      const effects: TimerEffect[] = [
+        { type: 'PersistState', snapshot: newSnapshot },
+        {
+          type: 'ShowReminder',
+          title: null,
+          body: null,
+          timerGeneration: snapshot.timerGeneration,
+          alertId: nextAlertId,
+        },
+        {
+          type: 'ScheduleAlertTimeout',
+          deadlineAtMillis: alertDeadlineAt,
+          timerGeneration: snapshot.timerGeneration,
+          alertId: nextAlertId,
+        },
+      ];
+
       return { newSnapshot, effects };
     }
   }
@@ -373,6 +523,7 @@ export class TimerDomainEngine {
             const triggerEvent: TimerEvent = {
               type: 'TIMER_TRIGGER',
               timerGeneration: snapshot.timerGeneration,
+              scheduledAt: targetAt,
               timestamp: now,
             };
             return this.processEvent(snapshot, triggerEvent, config, now);
@@ -408,16 +559,8 @@ export class TimerDomainEngine {
           return this.processEvent(snapshot, timeoutEvent, config, now);
         } else {
           const activeAlertId = snapshot.alertId ?? Math.max(1001, snapshot.lastAlertId);
-          const nextTriggerAt =
-            snapshot.nextTriggerAt !== null && snapshot.nextTriggerAt > now
-              ? snapshot.nextTriggerAt
-              : (config.mode === 'interval' || config.autoRestart ? calculateNextTriggerAt(now, config) : null);
-          const newSnapshot: TimerSnapshot = {
-            ...snapshot,
-            nextTriggerAt,
-          };
           const effects: TimerEffect[] = [
-            { type: 'PersistState', snapshot: newSnapshot },
+            { type: 'PersistState', snapshot },
             {
               type: 'ShowReminder',
               title: null,
@@ -432,14 +575,14 @@ export class TimerDomainEngine {
               alertId: activeAlertId,
             },
           ];
-          if (nextTriggerAt !== null) {
+          if (snapshot.nextTriggerAt !== null) {
             effects.push({
               type: 'ScheduleTimer',
-              triggerAtMillis: nextTriggerAt,
+              triggerAtMillis: snapshot.nextTriggerAt,
               timerGeneration: snapshot.timerGeneration,
             });
           }
-          return { newSnapshot, effects };
+          return { newSnapshot: snapshot, effects };
         }
       }
     }

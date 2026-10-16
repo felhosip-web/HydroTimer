@@ -54,6 +54,7 @@ class TimerManager(private val context: Context) {
 
         const val EXTRA_TIMER_GENERATION = "com.hydrotimer.app.EXTRA_TIMER_GENERATION"
         const val EXTRA_ALERT_ID = "com.hydrotimer.app.EXTRA_ALERT_ID"
+        const val EXTRA_SCHEDULED_AT = "com.hydrotimer.app.EXTRA_SCHEDULED_AT"
     }
 
     fun getSnapshot(): TimerSnapshot {
@@ -173,6 +174,7 @@ class TimerManager(private val context: Context) {
         val intent = Intent(context, ReminderReceiver::class.java).apply {
             action = ReminderReceiver.ACTION_TRIGGER_REMINDER
             putExtra(EXTRA_TIMER_GENERATION, timerGeneration)
+            putExtra(EXTRA_SCHEDULED_AT, triggerAtMillis)
         }
         val pi = PendingIntent.getBroadcast(
             context,
@@ -186,7 +188,8 @@ class TimerManager(private val context: Context) {
             } else {
                 alarmManager.setExact(AlarmManager.RTC_WAKEUP, triggerAtMillis, pi)
             }
-        } catch (_: SecurityException) {
+        } catch (e: SecurityException) {
+            // Fallback when SCHEDULE_EXACT_ALARM permission is revoked or not granted
             alarmManager.set(AlarmManager.RTC_WAKEUP, triggerAtMillis, pi)
         }
     }
@@ -226,7 +229,8 @@ class TimerManager(private val context: Context) {
             } else {
                 alarmManager.setExact(AlarmManager.RTC_WAKEUP, deadlineAtMillis, pi)
             }
-        } catch (_: SecurityException) {
+        } catch (e: SecurityException) {
+            // Fallback when SCHEDULE_EXACT_ALARM permission is revoked or not granted
             alarmManager.set(AlarmManager.RTC_WAKEUP, deadlineAtMillis, pi)
         }
     }
@@ -267,7 +271,7 @@ class TimerManager(private val context: Context) {
 
     fun scheduleNextOccurrence() {
         val snapshot = getSnapshot()
-        dispatch(TimerEvent(TimerEventType.TIMER_TRIGGER, timerGeneration = snapshot.timerGeneration, timestamp = System.currentTimeMillis()))
+        dispatch(TimerEvent(TimerEventType.TIMER_TRIGGER, timerGeneration = snapshot.timerGeneration, scheduledAt = snapshot.nextTriggerAt, timestamp = System.currentTimeMillis()))
     }
 
     fun scheduleAlertTimeout() {

@@ -598,12 +598,8 @@ export default function App() {
                 setLogs([]);
                 setWaterIntakeMl(0);
               }}
-              onEditProgress={(newAmount, newGoal) => {
-                setWaterIntakeMl(newAmount);
-                if (newGoal && newGoal > 0) {
-                  setConfig((prev) => ({ ...prev, dailyGoalMl: newGoal }));
-                }
-              }}
+              onEditProgress={(newAmount) => setWaterIntakeMl(newAmount)}
+              onUpdateDailyGoal={(newGoal) => setConfig((prev) => ({ ...prev, dailyGoalMl: newGoal }))}
             />
           </div>
         </div>
@@ -657,12 +653,8 @@ export default function App() {
               setLogs([]);
               setWaterIntakeMl(0);
             }}
-            onEditProgress={(newAmount, newGoal) => {
-              setWaterIntakeMl(newAmount);
-              if (newGoal && newGoal > 0) {
-                setConfig((prev) => ({ ...prev, dailyGoalMl: newGoal }));
-              }
-            }}
+            onEditProgress={(newAmount) => setWaterIntakeMl(newAmount)}
+            onUpdateDailyGoal={(newGoal) => setConfig((prev) => ({ ...prev, dailyGoalMl: newGoal }))}
           />
         </div>
       </main>

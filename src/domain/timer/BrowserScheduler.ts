@@ -4,6 +4,7 @@ export type EventDispatcher = (event: {
   type: 'TIMER_TRIGGER' | 'ALERT_TIMEOUT';
   timerGeneration: number;
   alertId?: number | null;
+  scheduledAt?: number | null;
   timestamp: number;
 }) => void;
 
@@ -44,6 +45,7 @@ export class BrowserScheduler {
         this.dispatcher({
           type: 'TIMER_TRIGGER',
           timerGeneration,
+          scheduledAt: triggerAtMillis,
           timestamp: Date.now(),
         });
       }

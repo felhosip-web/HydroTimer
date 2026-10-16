@@ -7,12 +7,14 @@ enum class TimerEventType {
     ACKNOWLEDGE,
     DRINK,
     ALERT_TIMEOUT,
-    RECOVER
+    RECOVER,
+    TEST_ALERT
 }
 
 data class TimerEvent(
     val type: TimerEventType,
     val timerGeneration: Long? = null,
     val alertId: Long? = null,
+    val scheduledAt: Long? = null,
     val timestamp: Long
 )

@@ -141,6 +141,7 @@ export function useTimerController({
           type: scheduledEvent.type,
           timerGeneration: scheduledEvent.timerGeneration,
           alertId: scheduledEvent.alertId,
+          scheduledAt: scheduledEvent.scheduledAt,
           timestamp: scheduledEvent.timestamp,
         });
       });
@@ -212,20 +213,18 @@ export function useTimerController({
     [dispatch]
   );
 
-  const triggerTestAlert = useCallback(() => {
-    let current = snapshotRef.current;
-    if (current.state === 'STOPPED') {
-      current = dispatch({
-        type: 'START',
-        timestamp: Date.now(),
-      });
+  const triggerTestAlert = useCallback((): boolean => {
+    const before = snapshotRef.current;
+    if (before.state === 'ALERT_ACTIVE') {
+      return false;
     }
 
-    dispatch({
-      type: 'TIMER_TRIGGER',
-      timerGeneration: current.timerGeneration,
+    const updated = dispatch({
+      type: 'TEST_ALERT',
       timestamp: Date.now(),
     });
+
+    return updated.state === 'ALERT_ACTIVE';
   }, [dispatch]);
 
   // Calculate remaining seconds derived from canonical absolute timestamps

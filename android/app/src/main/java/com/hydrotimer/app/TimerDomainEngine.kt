@@ -23,6 +23,7 @@ object TimerDomainEngine {
             TimerEventType.DRINK -> handleDrink(snapshot, event, config, now)
             TimerEventType.ALERT_TIMEOUT -> handleAlertTimeout(snapshot, event, config, now)
             TimerEventType.RECOVER -> handleRecover(snapshot, config, now)
+            TimerEventType.TEST_ALERT -> handleTestAlert(snapshot, config, now)
         }
     }
 
@@ -87,10 +88,33 @@ object TimerDomainEngine {
         config: EngineConfig,
         now: Long
     ): TransitionResult {
-        if (snapshot.state != TimerState.WAITING) {
+        if (event.timerGeneration == null || event.timerGeneration != snapshot.timerGeneration) {
             return TransitionResult(snapshot, emptyList())
         }
-        if (event.timerGeneration == null || event.timerGeneration != snapshot.timerGeneration) {
+
+        if (snapshot.nextTriggerAt == null || event.scheduledAt == null || event.scheduledAt != snapshot.nextTriggerAt) {
+            return TransitionResult(snapshot, emptyList())
+        }
+
+        if (snapshot.state == TimerState.ALERT_ACTIVE) {
+            // Short interval scenario where next trigger arrives while alert is still active
+            if (snapshot.nextTriggerAt != null && now >= snapshot.nextTriggerAt) {
+                val shouldRestart = config.mode != "countdown" || config.autoRestart
+                if (!shouldRestart) {
+                    return TransitionResult(snapshot, emptyList())
+                }
+                val updatedNextTriggerAt = calculateNextTriggerAt(now, config)
+                val newSnapshot = snapshot.copy(nextTriggerAt = updatedNextTriggerAt)
+                val effects = listOf(
+                    TimerEffect.PersistState(newSnapshot),
+                    TimerEffect.ScheduleTimer(updatedNextTriggerAt, snapshot.timerGeneration)
+                )
+                return TransitionResult(newSnapshot, effects)
+            }
+            return TransitionResult(snapshot, emptyList())
+        }
+
+        if (snapshot.state != TimerState.WAITING) {
             return TransitionResult(snapshot, emptyList())
         }
 
@@ -111,11 +135,9 @@ object TimerDomainEngine {
         val alertDurationMs = Math.max(5, config.alertDurationSeconds) * 1000L
         val alertStartedAt = now
         val alertDeadlineAt = now + alertDurationMs
-        val nextTriggerAt = if (config.mode == "interval" || config.autoRestart) {
-            calculateNextTriggerAt(now, config)
-        } else {
-            null
-        }
+
+        val shouldAutoRestart = config.mode != "countdown" || config.autoRestart
+        val nextTriggerAt = if (shouldAutoRestart) calculateNextTriggerAt(now, config) else null
 
         val newSnapshot = snapshot.copy(
             state = TimerState.ALERT_ACTIVE,
@@ -131,6 +153,7 @@ object TimerDomainEngine {
             TimerEffect.ShowReminder(title = null, body = null, timerGeneration = snapshot.timerGeneration, alertId = nextAlertId),
             TimerEffect.ScheduleAlertTimeout(deadlineAtMillis = alertDeadlineAt, timerGeneration = snapshot.timerGeneration, alertId = nextAlertId)
         )
+
         if (nextTriggerAt != null) {
             effects.add(TimerEffect.ScheduleTimer(nextTriggerAt, snapshot.timerGeneration))
         }
@@ -155,9 +178,9 @@ object TimerDomainEngine {
         }
 
         val activeAlertId = snapshot.alertId
-        val isCountdown = config.mode == "countdown"
+        val shouldAutoRestart = config.mode != "countdown" || config.autoRestart
 
-        if (isCountdown && !config.autoRestart) {
+        if (!shouldAutoRestart) {
             val newSnapshot = snapshot.copy(
                 state = TimerState.STOPPED,
                 alertId = null,
@@ -178,6 +201,7 @@ object TimerDomainEngine {
             } else {
                 calculateNextTriggerAt(now, config)
             }
+
             val newSnapshot = snapshot.copy(
                 state = TimerState.WAITING,
                 alertId = null,
@@ -214,9 +238,9 @@ object TimerDomainEngine {
 
         val activeAlertId = snapshot.alertId
         val intake = Math.max(0, config.intakePerAlertMl)
-        val isCountdown = config.mode == "countdown"
+        val shouldAutoRestart = config.mode != "countdown" || config.autoRestart
 
-        if (isCountdown && !config.autoRestart) {
+        if (!shouldAutoRestart) {
             val newSnapshot = snapshot.copy(
                 state = TimerState.STOPPED,
                 alertId = null,
@@ -238,6 +262,7 @@ object TimerDomainEngine {
             } else {
                 calculateNextTriggerAt(now, config)
             }
+
             val newSnapshot = snapshot.copy(
                 state = TimerState.WAITING,
                 alertId = null,
@@ -280,9 +305,9 @@ object TimerDomainEngine {
             Math.max(5, config.alertDurationSeconds) * 1000L
         }
         val durationSec = Math.max(5, (durationMs / 1000L).toInt())
-        val isCountdown = config.mode == "countdown"
+        val shouldAutoRestart = config.mode != "countdown" || config.autoRestart
 
-        if (isCountdown && !config.autoRestart) {
+        if (!shouldAutoRestart) {
             val newSnapshot = snapshot.copy(
                 state = TimerState.STOPPED,
                 alertId = null,
@@ -304,6 +329,7 @@ object TimerDomainEngine {
             } else {
                 calculateNextTriggerAt(now, config)
             }
+
             val newSnapshot = snapshot.copy(
                 state = TimerState.WAITING,
                 alertId = null,
@@ -319,6 +345,61 @@ object TimerDomainEngine {
                 TimerEffect.ShowMissedNotification(durationSec),
                 TimerEffect.ScheduleTimer(nextTriggerAt, snapshot.timerGeneration)
             )
+            return TransitionResult(newSnapshot, effects)
+        }
+    }
+
+    private fun handleTestAlert(
+        snapshot: TimerSnapshot,
+        config: EngineConfig,
+        now: Long
+    ): TransitionResult {
+        if (snapshot.state == TimerState.ALERT_ACTIVE) {
+            return TransitionResult(snapshot, emptyList())
+        }
+
+        val alertDurationMs = Math.max(5, config.alertDurationSeconds) * 1000L
+        val alertStartedAt = now
+        val alertDeadlineAt = now + alertDurationMs
+        val nextAlertId = Math.max(1000L, snapshot.lastAlertId) + 1L
+
+        if (snapshot.state == TimerState.STOPPED) {
+            val nextGen = snapshot.timerGeneration + 1L
+            val nextTriggerAt = calculateNextTriggerAt(now, config)
+            val newSnapshot = TimerSnapshot(
+                state = TimerState.ALERT_ACTIVE,
+                timerGeneration = nextGen,
+                alertId = nextAlertId,
+                lastAlertId = nextAlertId,
+                nextTriggerAt = nextTriggerAt,
+                alertStartedAt = alertStartedAt,
+                alertDeadlineAt = alertDeadlineAt
+            )
+
+            val effects = listOf(
+                TimerEffect.PersistState(newSnapshot),
+                TimerEffect.ShowReminder(title = null, body = null, timerGeneration = nextGen, alertId = nextAlertId),
+                TimerEffect.ScheduleAlertTimeout(deadlineAtMillis = alertDeadlineAt, timerGeneration = nextGen, alertId = nextAlertId),
+                TimerEffect.ScheduleTimer(triggerAtMillis = nextTriggerAt, timerGeneration = nextGen)
+            )
+
+            return TransitionResult(newSnapshot, effects)
+        } else {
+            // WAITING state: keep existing timerGeneration and nextTriggerAt
+            val newSnapshot = snapshot.copy(
+                state = TimerState.ALERT_ACTIVE,
+                alertId = nextAlertId,
+                lastAlertId = nextAlertId,
+                alertStartedAt = alertStartedAt,
+                alertDeadlineAt = alertDeadlineAt
+            )
+
+            val effects = listOf(
+                TimerEffect.PersistState(newSnapshot),
+                TimerEffect.ShowReminder(title = null, body = null, timerGeneration = snapshot.timerGeneration, alertId = nextAlertId),
+                TimerEffect.ScheduleAlertTimeout(deadlineAtMillis = alertDeadlineAt, timerGeneration = snapshot.timerGeneration, alertId = nextAlertId)
+            )
+
             return TransitionResult(newSnapshot, effects)
         }
     }
@@ -346,6 +427,7 @@ object TimerDomainEngine {
                         val triggerEvent = TimerEvent(
                             type = TimerEventType.TIMER_TRIGGER,
                             timerGeneration = snapshot.timerGeneration,
+                            scheduledAt = targetAt,
                             timestamp = now
                         )
                         processEvent(snapshot, triggerEvent, config, now)
@@ -378,23 +460,15 @@ object TimerDomainEngine {
                     processEvent(snapshot, timeoutEvent, config, now)
                 } else {
                     val activeAlertId = snapshot.alertId ?: Math.max(1001L, snapshot.lastAlertId)
-                    val nextTriggerAt = if (snapshot.nextTriggerAt != null && snapshot.nextTriggerAt > now) {
-                        snapshot.nextTriggerAt
-                    } else if (config.mode == "interval" || config.autoRestart) {
-                        calculateNextTriggerAt(now, config)
-                    } else {
-                        null
-                    }
-                    val newSnapshot = snapshot.copy(nextTriggerAt = nextTriggerAt)
                     val effects = mutableListOf<TimerEffect>(
-                        TimerEffect.PersistState(newSnapshot),
+                        TimerEffect.PersistState(snapshot),
                         TimerEffect.ShowReminder(title = null, body = null, timerGeneration = snapshot.timerGeneration, alertId = activeAlertId),
                         TimerEffect.ScheduleAlertTimeout(deadlineAtMillis = deadlineAt, timerGeneration = snapshot.timerGeneration, alertId = activeAlertId)
                     )
-                    if (nextTriggerAt != null) {
-                        effects.add(TimerEffect.ScheduleTimer(nextTriggerAt, snapshot.timerGeneration))
+                    if (snapshot.nextTriggerAt != null) {
+                        effects.add(TimerEffect.ScheduleTimer(snapshot.nextTriggerAt, snapshot.timerGeneration))
                     }
-                    TransitionResult(newSnapshot, effects)
+                    TransitionResult(snapshot, effects)
                 }
             }
         }

@@ -84,14 +84,18 @@ class MainActivity : AppCompatActivity() {
         }
 
         binding.btnTestAlert.setOnClickListener {
-            var snapshot = timerManager.getSnapshot()
-            if (snapshot.state == TimerState.STOPPED) {
-                timerManager.startTimer()
-                snapshot = timerManager.getSnapshot()
+            val snapshotBefore = timerManager.getSnapshot()
+            if (snapshotBefore.state == TimerState.ALERT_ACTIVE) {
+                Toast.makeText(this, "⚠️ A riasztás már aktív!", Toast.LENGTH_SHORT).show()
+            } else {
+                val result = timerManager.dispatch(TimerEvent(TimerEventType.TEST_ALERT, timestamp = System.currentTimeMillis()))
+                if (result.newSnapshot.state == TimerState.ALERT_ACTIVE) {
+                    val alertDuration = timerManager.getAlertDurationSeconds()
+                    Toast.makeText(this, "🔊 Teszt riasztás elindítva! ($alertDuration mp nyugtázási ablak)", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(this, "⚠️ Teszt riasztás nem indítható el", Toast.LENGTH_SHORT).show()
+                }
             }
-            timerManager.dispatch(TimerEvent(TimerEventType.TIMER_TRIGGER, timerGeneration = snapshot.timerGeneration, timestamp = System.currentTimeMillis()))
-            val alertDuration = timerManager.getAlertDurationSeconds()
-            Toast.makeText(this, "🔊 Riasztás elküldve! ($alertDuration mp nyugtázási ablak)", Toast.LENGTH_SHORT).show()
         }
 
         binding.btnLogDrink.setOnClickListener {
@@ -508,12 +512,11 @@ class MainActivity : AppCompatActivity() {
             if (alertMillisRemaining <= 0L) {
                 timerManager.dispatch(
                     TimerEvent(
-                        TimerEventType.ALERT_TIMEOUT,
+                        type = TimerEventType.ALERT_TIMEOUT,
                         timerGeneration = snapshot.timerGeneration,
                         alertId = snapshot.alertId,
                         timestamp = now
-                    ),
-                    now
+                    )
                 )
                 return
             }
@@ -534,11 +537,11 @@ class MainActivity : AppCompatActivity() {
         if (millisRemaining <= 0L) {
             timerManager.dispatch(
                 TimerEvent(
-                    TimerEventType.TIMER_TRIGGER,
+                    type = TimerEventType.TIMER_TRIGGER,
                     timerGeneration = snapshot.timerGeneration,
+                    scheduledAt = snapshot.nextTriggerAt,
                     timestamp = now
-                ),
-                now
+                )
             )
             return
         }

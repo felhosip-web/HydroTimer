@@ -31,7 +31,8 @@ interface DailyStatsProps {
   waterIntakeMl: number;
   onQuickAddWater: (amountMl: number) => void;
   onClearLogs: () => void;
-  onEditProgress?: (newAmount: number, newGoal?: number) => void;
+  onEditProgress?: (newAmount: number) => void;
+  onUpdateDailyGoal?: (newGoalMl: number) => void;
 }
 
 interface DailyIntakePoint {
@@ -94,7 +95,13 @@ export const DailyStats: React.FC<DailyStatsProps> = ({
   onQuickAddWater,
   onClearLogs,
   onEditProgress,
+  onUpdateDailyGoal,
 }) => {
+  const [isEditingIntakeModal, setIsEditingIntakeModal] = React.useState(false);
+  const [isEditingGoalModal, setIsEditingGoalModal] = React.useState(false);
+  const [tempIntakeVal, setTempIntakeVal] = React.useState('');
+  const [tempGoalVal, setTempGoalVal] = React.useState('');
+
   const goalPercent = Math.min(100, Math.round((waterIntakeMl / (config.dailyGoalMl || 2500)) * 100));
 
   const remainingToday = Math.max(0, (config.dailyGoalMl || 2500) - waterIntakeMl);
@@ -269,27 +276,29 @@ export const DailyStats: React.FC<DailyStatsProps> = ({
                 <h3 className="text-sm font-bold text-white">Napi Hidratációs Cél</h3>
                 <button
                   onClick={() => {
-                    const currentStr = window.prompt("1/2: Add meg a mai fogyasztást (ml):", waterIntakeMl.toString());
-                    if (currentStr === null) return;
-                    const parsedCurrent = parseInt(currentStr, 10);
-                    const newIntake = !isNaN(parsedCurrent) ? parsedCurrent : waterIntakeMl;
-
-                    const goalStr = window.prompt("2/2: Add meg a teljes napi célt (ml):", (config.dailyGoalMl || 2500).toString());
-                    const parsedGoal = goalStr ? parseInt(goalStr, 10) : undefined;
-                    const newGoal = parsedGoal && !isNaN(parsedGoal) && parsedGoal > 0 ? parsedGoal : undefined;
-
-                    if (onEditProgress) {
-                      onEditProgress(newIntake, newGoal);
-                    }
+                    setTempIntakeVal(waterIntakeMl.toString());
+                    setIsEditingIntakeModal(true);
                   }}
                   className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors"
-                  title="Mai fogyasztás és Napi cél módosítása"
+                  title="Mai fogyasztás módosítása"
+                  id="edit-intake-btn"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-edit-2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
                 </button>
+                <button
+                  onClick={() => {
+                    setTempGoalVal((config.dailyGoalMl || 2500).toString());
+                    setIsEditingGoalModal(true);
+                  }}
+                  className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-sky-400 hover:text-sky-300 transition-colors"
+                  title="Napi cél módosítása"
+                  id="edit-goal-btn"
+                >
+                  <Target className="w-3.5 h-3.5" />
+                </button>
               </div>
               <p className="text-xs text-slate-400">
-                {waterIntakeMl} ml / {config.dailyGoalMl} ml
+                {waterIntakeMl} ml / {config.dailyGoalMl || 2500} ml
               </p>
             </div>
           </div>
@@ -306,6 +315,93 @@ export const DailyStats: React.FC<DailyStatsProps> = ({
           ></div>
         </div>
       </div>
+
+      {/* Modals for Intake & Goal Editing */}
+      {isEditingIntakeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
+          <div className="w-full max-w-sm bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-2xl">
+            <h3 className="text-sm font-bold text-white mb-2 flex items-center gap-2">
+              <Droplets className="w-4 h-4 text-sky-400" />
+              <span>Mai Vízfogyasztás Módosítása</span>
+            </h3>
+            <p className="text-xs text-slate-400 mb-4">Add meg a mai napon eddig elfogyasztott vízmennyiséget ml-ben:</p>
+            <input
+              type="number"
+              min="0"
+              max="10000"
+              step="50"
+              value={tempIntakeVal}
+              onChange={(e) => setTempIntakeVal(e.target.value)}
+              className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white font-mono font-bold mb-4 focus:outline-none focus:border-sky-500"
+              id="input-edit-intake"
+            />
+            <div className="flex items-center justify-end gap-2">
+              <button
+                onClick={() => setIsEditingIntakeModal(false)}
+                className="px-3 py-1.5 rounded-xl text-xs text-slate-400 hover:text-white"
+              >
+                Mégse
+              </button>
+              <button
+                onClick={() => {
+                  const val = parseInt(tempIntakeVal, 10);
+                  if (!isNaN(val) && val >= 0 && onEditProgress) {
+                    onEditProgress(val);
+                  }
+                  setIsEditingIntakeModal(false);
+                }}
+                className="px-4 py-1.5 bg-sky-500 hover:bg-sky-400 text-white rounded-xl text-xs font-bold"
+                id="save-intake-btn"
+              >
+                Mentés
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isEditingGoalModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
+          <div className="w-full max-w-sm bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-2xl">
+            <h3 className="text-sm font-bold text-white mb-2 flex items-center gap-2">
+              <Target className="w-4 h-4 text-emerald-400" />
+              <span>Napi Hidratációs Cél Módosítása</span>
+            </h3>
+            <p className="text-xs text-slate-400 mb-4">Add meg az új kitűzött napi vízbeviteli célt ml-ben:</p>
+            <input
+              type="number"
+              min="500"
+              max="10000"
+              step="100"
+              value={tempGoalVal}
+              onChange={(e) => setTempGoalVal(e.target.value)}
+              className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white font-mono font-bold mb-4 focus:outline-none focus:border-emerald-500"
+              id="input-edit-goal"
+            />
+            <div className="flex items-center justify-end gap-2">
+              <button
+                onClick={() => setIsEditingGoalModal(false)}
+                className="px-3 py-1.5 rounded-xl text-xs text-slate-400 hover:text-white"
+              >
+                Mégse
+              </button>
+              <button
+                onClick={() => {
+                  const val = parseInt(tempGoalVal, 10);
+                  if (!isNaN(val) && val >= 500 && val <= 10000 && onUpdateDailyGoal) {
+                    onUpdateDailyGoal(val);
+                  }
+                  setIsEditingGoalModal(false);
+                }}
+                className="px-4 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-white rounded-xl text-xs font-bold"
+                id="save-goal-btn"
+              >
+                Mentés
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Quick Add Buttons */}
       <div>
@@ -338,22 +434,9 @@ export const DailyStats: React.FC<DailyStatsProps> = ({
               <p className="text-[10px] text-slate-400">Napi megoszlás a kitűzött célhoz mérten</p>
             </div>
           </div>
-          <button
-            onClick={() => {
-              const goalStr = window.prompt("Add meg az új teljes napi célt (ml):", (config.dailyGoalMl || 2500).toString());
-              if (goalStr) {
-                const parsedGoal = parseInt(goalStr, 10);
-                if (!isNaN(parsedGoal) && parsedGoal > 0 && onEditProgress) {
-                  onEditProgress(waterIntakeMl, parsedGoal);
-                }
-              }
-            }}
-            className="text-[10px] font-semibold text-sky-400 hover:text-sky-300 bg-sky-950/60 hover:bg-sky-900/60 border border-sky-800/50 px-2 py-0.5 rounded-full transition-colors flex items-center gap-1 cursor-pointer"
-            title="Kattints a teljes napi cél módosításához"
-          >
-            <span>Cél: {config.dailyGoalMl} ml</span>
-            <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-edit-2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
-          </button>
+          <span className="text-[10px] font-semibold text-sky-400 bg-sky-950/60 border border-sky-800/50 px-2 py-0.5 rounded-full">
+            Cél: {config.dailyGoalMl} ml
+          </span>
         </div>
 
         {/* 7-Day Key Performance Metrics */}
