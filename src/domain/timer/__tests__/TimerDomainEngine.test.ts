@@ -755,6 +755,7 @@ describe('TimerDomainEngine Unit Tests', () => {
     expect(res.newSnapshot.timerGeneration).toBe(2);
     expect(res.newSnapshot.nextTriggerAt).toBe(futureNextTriggerAt);
     expect(res.newSnapshot.alertId).toBe(1001);
+    expect(res.effects.filter((e) => e.type === 'ShowReminder').length).toBe(1);
     expect(res.effects.some((e) => e.type === 'ShowReminder' && e.timerGeneration === 2 && e.alertId === 1001)).toBe(true);
     expect(res.effects.some((e) => e.type === 'ScheduleAlertTimeout')).toBe(true);
   });
