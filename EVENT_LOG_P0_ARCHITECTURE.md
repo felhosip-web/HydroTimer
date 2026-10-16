@@ -43,18 +43,18 @@
   - Every timer-triggered reminder alert generates a unique `(timerGeneration, alertId)` combination.
   - Test alerts (`TEST_ALERT`) do not create real hydration events.
   - If duplicate trigger callbacks or recovery attempts process the same reminder alert, the computed `id` is identical (`"1_1001"`).
-  - Both Web and Android repositories use `createIfAbsent()` to ignore duplicate insertion attempts and return the existing event record.
+  - Both Web and Android repositories use `createIfAbsent()` to ignore duplicate insertion attempts and return the existing event record without overwriting.
 
 ---
 
 ## 3. Local-Day Query Semantics
 
-- **Range**: `scheduledAt >= startOfDayMillis AND scheduledAt < startOfNextDayMillis`
+- **Range**: Half-open interval `scheduledAt >= startOfDayMillis AND scheduledAt < startOfNextDayMillis`
 - **Local Boundary Calculation**:
   - **Web**: Uses local `Date` constructor `(year, month, day, 0, 0, 0, 0)` and `(year, month, day + 1, 0, 0, 0, 0)`.
-  - **Android**: Uses `LocalDate` with `ZoneId.systemDefault()`, computing `date.atStartOfDay(zoneId)` and `date.plusDays(1).atStartOfDay(zoneId)`.
+  - **Android**: Uses `LocalDate` with `ZoneId` (e.g. `ZoneId.of("Europe/Budapest")` or `ZoneId.systemDefault()`), computing `date.atStartOfDay(zoneId)` and `date.plusDays(1).atStartOfDay(zoneId)`.
 - **Daylight Saving Time (DST)**:
-  - By using local date constructors and `ZoneId.systemDefault()`, local day boundaries accurately capture 23-hour (spring forward) or 25-hour (fall back) calendar days without assuming a fixed 24-hour length.
+  - By using local date constructors and `ZoneId`, local day boundaries accurately capture 23-hour (spring forward) or 25-hour (fall back) calendar days without assuming a fixed 24-hour length.
 
 ---
 
@@ -76,8 +76,9 @@
 
 ---
 
-## 5. Limitations & Unresolved Questions for P1
+## 5. Phase Roadmap & Scope Boundaries
 
-1. **Engine Integration**: P0 defines models and persistence. Wiring `createIfAbsent()` into live timer engine trigger effects belongs to P1.
-2. **UI Layer**: Event list screen, daily history views, and status update modals belong to P1.
-3. **Event Resolution**: Deferred resolution of pending events by the user will be hooked up in the P1 UI/Engine integration phase.
+- **P0 (Current Phase)**: Domain model and local persistence foundation for hydration events. No live timer engine wiring or UI changes.
+- **P1 (Next Phase)**: Integration with accepted, real timer triggers. Automatic creation of `PENDING` events when real reminder alerts fire (excluding `TEST_ALERT`).
+- **P2 (Future Phase)**: Event-log UI and history browsing screen/components.
+- **P3 (Future Phase)**: Status editing, resolution modal, and related UI interaction behavior.

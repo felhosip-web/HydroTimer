@@ -1,5 +1,6 @@
 package com.hydrotimer.app
 
+import android.content.ContentValues
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import org.junit.After
@@ -149,56 +150,95 @@ class HydrationEventRepositoryTest {
     }
 
     @Test
-    fun testLocalDayRangeBoundariesIncludingDstTransition() {
-        val localDate = LocalDate.of(2025, 5, 15)
-        val zoneId = ZoneId.systemDefault()
+    fun testDeterministicDstTransitionsEuropeBudapest() {
+        val budapestZone = ZoneId.of("Europe/Budapest")
 
-        val startOfDay = localDate.atStartOfDay(zoneId).toInstant().toEpochMilli()
-        val startOfNextDay = localDate.plusDays(1).atStartOfDay(zoneId).toInstant().toEpochMilli()
+        // 1. Spring forward transition: 2025-03-30 (clocks move forward 1h at 02:00 -> 03:00)
+        val springDate = LocalDate.of(2025, 3, 30)
+        val springStart = springDate.atStartOfDay(budapestZone).toInstant().toEpochMilli()
+        val springNextDayStart = springDate.plusDays(1).atStartOfDay(budapestZone).toInstant().toEpochMilli()
+        val springDayDurationMs = springNextDayStart - springStart
 
-        val ePrev = HydrationEvent.createPending(1L, 1L, startOfDay - 1L)
-        val eStart = HydrationEvent.createPending(1L, 2L, startOfDay)
-        val eMid = HydrationEvent.createPending(1L, 3L, startOfDay + 12 * 3600 * 1000L)
-        val eEnd = HydrationEvent.createPending(1L, 4L, startOfNextDay - 1L)
-        val eNext = HydrationEvent.createPending(1L, 5L, startOfNextDay)
+        // 23 hours in milliseconds = 23 * 3600 * 1000 = 82,800,000 ms
+        assertEquals(23 * 3600 * 1000L, springDayDurationMs)
 
-        repository.createIfAbsent(ePrev)
-        repository.createIfAbsent(eStart)
-        repository.createIfAbsent(eMid)
-        repository.createIfAbsent(eEnd)
-        repository.createIfAbsent(eNext)
+        // Verify boundary behavior on spring transition day: [springStart, springNextDayStart)
+        val springBefore = HydrationEvent.createPending(1L, 1L, springStart - 1L)
+        val springAtStart = HydrationEvent.createPending(1L, 2L, springStart)
+        val springMidDay = HydrationEvent.createPending(1L, 3L, springStart + 12 * 3600 * 1000L)
+        val springAtEnd = HydrationEvent.createPending(1L, 4L, springNextDayStart - 1L)
+        val springAtNextStart = HydrationEvent.createPending(1L, 5L, springNextDayStart)
 
-        val dayEvents = repository.listByLocalDay(localDate, zoneId)
-        assertEquals(3, dayEvents.size)
-        val dayIds = dayEvents.map { it.id }
-        assertTrue(dayIds.contains("1_2"))
-        assertTrue(dayIds.contains("1_3"))
-        assertTrue(dayIds.contains("1_4"))
-        assertFalse(dayIds.contains("1_1"))
-        assertFalse(dayIds.contains("1_5"))
+        repository.createIfAbsent(springBefore)
+        repository.createIfAbsent(springAtStart)
+        repository.createIfAbsent(springMidDay)
+        repository.createIfAbsent(springAtEnd)
+        repository.createIfAbsent(springAtNextStart)
 
-        // DST transition day test
-        val dstDate = LocalDate.of(2025, 3, 30)
-        val dstStart = dstDate.atStartOfDay(zoneId).toInstant().toEpochMilli()
-        val dstNext = dstDate.plusDays(1).atStartOfDay(zoneId).toInstant().toEpochMilli()
+        val springDayEvents = repository.listByLocalDay(springDate, budapestZone)
+        assertEquals(3, springDayEvents.size)
+        val springIds = springDayEvents.map { it.id }
+        assertTrue(springIds.contains("1_2"))
+        assertTrue(springIds.contains("1_3"))
+        assertTrue(springIds.contains("1_4"))
+        assertFalse(springIds.contains("1_1"))
+        assertFalse(springIds.contains("1_5"))
 
-        val dstPrev = HydrationEvent.createPending(2L, 1L, dstStart - 1000L)
-        val dst1 = HydrationEvent.createPending(2L, 2L, dstStart + 1800 * 1000L)
-        val dst2 = HydrationEvent.createPending(2L, 3L, dstNext - 1800 * 1000L)
-        val dstAfter = HydrationEvent.createPending(2L, 4L, dstNext + 1000L)
+        repository.clearAll()
 
-        repository.createIfAbsent(dstPrev)
-        repository.createIfAbsent(dst1)
-        repository.createIfAbsent(dst2)
-        repository.createIfAbsent(dstAfter)
+        // 2. Autumn fall back transition: 2025-10-26 (clocks move back 1h at 03:00 -> 02:00)
+        val autumnDate = LocalDate.of(2025, 10, 26)
+        val autumnStart = autumnDate.atStartOfDay(budapestZone).toInstant().toEpochMilli()
+        val autumnNextDayStart = autumnDate.plusDays(1).atStartOfDay(budapestZone).toInstant().toEpochMilli()
+        val autumnDayDurationMs = autumnNextDayStart - autumnStart
 
-        val dstEvents = repository.listByLocalDay(dstDate, zoneId)
-        assertEquals(2, dstEvents.size)
-        val dstIds = dstEvents.map { it.id }
-        assertTrue(dstIds.contains("2_2"))
-        assertTrue(dstIds.contains("2_3"))
-        assertFalse(dstIds.contains("2_1"))
-        assertFalse(dstIds.contains("2_4"))
+        // 25 hours in milliseconds = 25 * 3600 * 1000 = 90,000,000 ms
+        assertEquals(25 * 3600 * 1000L, autumnDayDurationMs)
+
+        // Verify boundary behavior on autumn transition day: [autumnStart, autumnNextDayStart)
+        val autumnBefore = HydrationEvent.createPending(2L, 1L, autumnStart - 1L)
+        val autumnAtStart = HydrationEvent.createPending(2L, 2L, autumnStart)
+        val autumnMidDay = HydrationEvent.createPending(2L, 3L, autumnStart + 12 * 3600 * 1000L)
+        val autumnAtEnd = HydrationEvent.createPending(2L, 4L, autumnNextDayStart - 1L)
+        val autumnAtNextStart = HydrationEvent.createPending(2L, 5L, autumnNextDayStart)
+
+        repository.createIfAbsent(autumnBefore)
+        repository.createIfAbsent(autumnAtStart)
+        repository.createIfAbsent(autumnMidDay)
+        repository.createIfAbsent(autumnAtEnd)
+        repository.createIfAbsent(autumnAtNextStart)
+
+        val autumnDayEvents = repository.listByLocalDay(autumnDate, budapestZone)
+        assertEquals(3, autumnDayEvents.size)
+        val autumnIds = autumnDayEvents.map { it.id }
+        assertTrue(autumnIds.contains("2_2"))
+        assertTrue(autumnIds.contains("2_3"))
+        assertTrue(autumnIds.contains("2_4"))
+        assertFalse(autumnIds.contains("2_1"))
+        assertFalse(autumnIds.contains("2_5"))
+    }
+
+    @Test
+    fun testCorruptOrUnknownStatusThrowsException() {
+        val db = dbHelper.writableDatabase
+        val values = ContentValues().apply {
+            put(HydrationEventDatabaseHelper.COLUMN_ID, "corrupt_1")
+            put(HydrationEventDatabaseHelper.COLUMN_TIMER_GENERATION, 1L)
+            put(HydrationEventDatabaseHelper.COLUMN_ALERT_ID, 1001L)
+            put(HydrationEventDatabaseHelper.COLUMN_SCHEDULED_AT, 1000L)
+            put(HydrationEventDatabaseHelper.COLUMN_CREATED_AT, 1000L)
+            put(HydrationEventDatabaseHelper.COLUMN_STATUS, "INVALID_CORRUPT_STATUS")
+            put(HydrationEventDatabaseHelper.COLUMN_UPDATED_AT, 1000L)
+            put(HydrationEventDatabaseHelper.COLUMN_REVISION, 1L)
+        }
+        db.insert(HydrationEventDatabaseHelper.TABLE_EVENTS, null, values)
+
+        try {
+            repository.getById("corrupt_1")
+            fail("Expected IllegalStateException when reading corrupt status string")
+        } catch (e: IllegalStateException) {
+            assertTrue(e.message?.contains("Invalid or corrupted HydrationEventStatus") == true)
+        }
     }
 
     @Test

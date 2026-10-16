@@ -11,6 +11,7 @@ class HydrationEventRepository(private val dbHelper: HydrationEventDatabaseHelpe
     /**
      * Creates an event if absent. Uses stable primary key `id`.
      * If an event with the same ID already exists, returns the existing record without overwriting.
+     * If insertion fails or conflicts and no existing record can be retrieved, throws an IllegalStateException.
      */
     fun createIfAbsent(event: HydrationEvent): HydrationEvent {
         val db = dbHelper.writableDatabase
@@ -35,7 +36,7 @@ class HydrationEventRepository(private val dbHelper: HydrationEventDatabaseHelpe
         return if (rowId != -1L) {
             event
         } else {
-            getById(event.id) ?: event
+            getById(event.id) ?: throw IllegalStateException("Failed to insert or retrieve existing HydrationEvent with id '${event.id}'.")
         }
     }
 
@@ -184,7 +185,7 @@ class HydrationEventRepository(private val dbHelper: HydrationEventDatabaseHelpe
         val status = try {
             HydrationEventStatus.valueOf(statusStr)
         } catch (e: Exception) {
-            HydrationEventStatus.PENDING
+            throw IllegalStateException("Invalid or corrupted HydrationEventStatus '$statusStr' for event id '$id'.", e)
         }
 
         return HydrationEvent(
