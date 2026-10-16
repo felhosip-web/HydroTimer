@@ -590,4 +590,50 @@ class TimerDomainEngineTest {
         assertTrue(code3 > 0)
         assertTrue(code1 != code3)
     }
+
+    @Test
+    fun testTestAlertWhileWaitingWithFutureNextTriggerAtTriggersImmediateAlertAndKeepsGenerationAndNextTriggerAt() {
+        val futureNextTriggerAt = fixedNow + 30 * 60_000L
+        val waitingSnap = TimerSnapshot(state = TimerState.WAITING, timerGeneration = 2L, nextTriggerAt = futureNextTriggerAt)
+
+        val result = TimerDomainEngine.processEvent(waitingSnap, TimerEvent(type = TimerEventType.TEST_ALERT, timestamp = fixedNow), baseConfig, fixedNow)
+
+        assertEquals(TimerState.ALERT_ACTIVE, result.newSnapshot.state)
+        assertEquals(2L, result.newSnapshot.timerGeneration)
+        assertEquals(futureNextTriggerAt, result.newSnapshot.nextTriggerAt)
+        assertEquals(1001L, result.newSnapshot.alertId)
+        assertTrue(result.effects.any { it is TimerEffect.ShowReminder && it.timerGeneration == 2L && it.alertId == 1001L })
+        assertTrue(result.effects.any { it is TimerEffect.ScheduleAlertTimeout })
+    }
+
+    @Test
+    fun testTestAlertWhileStoppedStartsNewGenerationAndTriggersImmediateAlert() {
+        val stoppedSnap = TimerSnapshot(state = TimerState.STOPPED, timerGeneration = 1L)
+
+        val result = TimerDomainEngine.processEvent(stoppedSnap, TimerEvent(type = TimerEventType.TEST_ALERT, timestamp = fixedNow), baseConfig, fixedNow)
+
+        assertEquals(TimerState.ALERT_ACTIVE, result.newSnapshot.state)
+        assertEquals(2L, result.newSnapshot.timerGeneration)
+        assertEquals(fixedNow + 30 * 60_000L, result.newSnapshot.nextTriggerAt)
+        assertEquals(1001L, result.newSnapshot.alertId)
+        assertTrue(result.effects.any { it is TimerEffect.ScheduleTimer && it.timerGeneration == 2L })
+        assertTrue(result.effects.any { it is TimerEffect.ShowReminder && it.timerGeneration == 2L && it.alertId == 1001L })
+    }
+
+    @Test
+    fun testTestAlertWhileAlertActiveIsRejectedWithNoSideEffects() {
+        val alertActiveSnap = TimerSnapshot(
+            state = TimerState.ALERT_ACTIVE,
+            timerGeneration = 1L,
+            alertId = 1001L,
+            alertStartedAt = fixedNow - 2000L,
+            alertDeadlineAt = fixedNow + 13_000L,
+            nextTriggerAt = fixedNow + 30 * 60_000L
+        )
+
+        val result = TimerDomainEngine.processEvent(alertActiveSnap, TimerEvent(type = TimerEventType.TEST_ALERT, timestamp = fixedNow), baseConfig, fixedNow)
+
+        assertEquals(alertActiveSnap, result.newSnapshot)
+        assertTrue(result.effects.isEmpty())
+    }
 }

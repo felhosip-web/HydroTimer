@@ -33,7 +33,8 @@ export type TimerEventType =
   | 'ACKNOWLEDGE'
   | 'DRINK'
   | 'ALERT_TIMEOUT'
-  | 'RECOVER';
+  | 'RECOVER'
+  | 'TEST_ALERT';
 
 export interface TimerEvent {
   type: TimerEventType;

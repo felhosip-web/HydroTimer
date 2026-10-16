@@ -23,6 +23,7 @@ object TimerDomainEngine {
             TimerEventType.DRINK -> handleDrink(snapshot, event, config, now)
             TimerEventType.ALERT_TIMEOUT -> handleAlertTimeout(snapshot, event, config, now)
             TimerEventType.RECOVER -> handleRecover(snapshot, config, now)
+            TimerEventType.TEST_ALERT -> handleTestAlert(snapshot, config, now)
         }
     }
 
@@ -344,6 +345,61 @@ object TimerDomainEngine {
                 TimerEffect.ShowMissedNotification(durationSec),
                 TimerEffect.ScheduleTimer(nextTriggerAt, snapshot.timerGeneration)
             )
+            return TransitionResult(newSnapshot, effects)
+        }
+    }
+
+    private fun handleTestAlert(
+        snapshot: TimerSnapshot,
+        config: EngineConfig,
+        now: Long
+    ): TransitionResult {
+        if (snapshot.state == TimerState.ALERT_ACTIVE) {
+            return TransitionResult(snapshot, emptyList())
+        }
+
+        val alertDurationMs = Math.max(5, config.alertDurationSeconds) * 1000L
+        val alertStartedAt = now
+        val alertDeadlineAt = now + alertDurationMs
+        val nextAlertId = Math.max(1000L, snapshot.lastAlertId) + 1L
+
+        if (snapshot.state == TimerState.STOPPED) {
+            val nextGen = snapshot.timerGeneration + 1L
+            val nextTriggerAt = calculateNextTriggerAt(now, config)
+            val newSnapshot = TimerSnapshot(
+                state = TimerState.ALERT_ACTIVE,
+                timerGeneration = nextGen,
+                alertId = nextAlertId,
+                lastAlertId = nextAlertId,
+                nextTriggerAt = nextTriggerAt,
+                alertStartedAt = alertStartedAt,
+                alertDeadlineAt = alertDeadlineAt
+            )
+
+            val effects = listOf(
+                TimerEffect.PersistState(newSnapshot),
+                TimerEffect.ShowReminder(title = null, body = null, timerGeneration = nextGen, alertId = nextAlertId),
+                TimerEffect.ScheduleAlertTimeout(deadlineAtMillis = alertDeadlineAt, timerGeneration = nextGen, alertId = nextAlertId),
+                TimerEffect.ScheduleTimer(triggerAtMillis = nextTriggerAt, timerGeneration = nextGen)
+            )
+
+            return TransitionResult(newSnapshot, effects)
+        } else {
+            // WAITING state: keep existing timerGeneration and nextTriggerAt
+            val newSnapshot = snapshot.copy(
+                state = TimerState.ALERT_ACTIVE,
+                alertId = nextAlertId,
+                lastAlertId = nextAlertId,
+                alertStartedAt = alertStartedAt,
+                alertDeadlineAt = alertDeadlineAt
+            )
+
+            val effects = listOf(
+                TimerEffect.PersistState(newSnapshot),
+                TimerEffect.ShowReminder(title = null, body = null, timerGeneration = snapshot.timerGeneration, alertId = nextAlertId),
+                TimerEffect.ScheduleAlertTimeout(deadlineAtMillis = alertDeadlineAt, timerGeneration = snapshot.timerGeneration, alertId = nextAlertId)
+            )
+
             return TransitionResult(newSnapshot, effects)
         }
     }

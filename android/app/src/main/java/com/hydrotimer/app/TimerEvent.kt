@@ -7,7 +7,8 @@ enum class TimerEventType {
     ACKNOWLEDGE,
     DRINK,
     ALERT_TIMEOUT,
-    RECOVER
+    RECOVER,
+    TEST_ALERT
 }
 
 data class TimerEvent(

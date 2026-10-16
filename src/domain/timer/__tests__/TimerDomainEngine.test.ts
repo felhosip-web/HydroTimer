@@ -737,4 +737,61 @@ describe('TimerDomainEngine Unit Tests', () => {
     const resNew = TimerDomainEngine.processEvent(resOld.newSnapshot, { type: 'START', timestamp: now }, newConfig, now);
     expect(resNew.newSnapshot.nextTriggerAt).toBe(now + 60 * 60 * 1000);
   });
+
+  // TEST_ALERT Tests
+  test('TEST_ALERT while WAITING with future nextTriggerAt triggers immediate alert and keeps existing generation & nextTriggerAt', () => {
+    const now = 100000;
+    const futureNextTriggerAt = now + 30 * 60 * 1000;
+    const waitingSnap: TimerSnapshot = {
+      ...defaultSnapshot,
+      state: 'WAITING',
+      timerGeneration: 2,
+      nextTriggerAt: futureNextTriggerAt,
+    };
+
+    const res = TimerDomainEngine.processEvent(waitingSnap, { type: 'TEST_ALERT', timestamp: now }, defaultConfig, now);
+
+    expect(res.newSnapshot.state).toBe('ALERT_ACTIVE');
+    expect(res.newSnapshot.timerGeneration).toBe(2);
+    expect(res.newSnapshot.nextTriggerAt).toBe(futureNextTriggerAt);
+    expect(res.newSnapshot.alertId).toBe(1001);
+    expect(res.effects.some((e) => e.type === 'ShowReminder' && e.timerGeneration === 2 && e.alertId === 1001)).toBe(true);
+    expect(res.effects.some((e) => e.type === 'ScheduleAlertTimeout')).toBe(true);
+  });
+
+  test('TEST_ALERT while STOPPED starts new generation, schedules nextTriggerAt, and triggers immediate alert', () => {
+    const now = 100000;
+    const stoppedSnap: TimerSnapshot = {
+      ...defaultSnapshot,
+      state: 'STOPPED',
+      timerGeneration: 1,
+    };
+
+    const res = TimerDomainEngine.processEvent(stoppedSnap, { type: 'TEST_ALERT', timestamp: now }, defaultConfig, now);
+
+    expect(res.newSnapshot.state).toBe('ALERT_ACTIVE');
+    expect(res.newSnapshot.timerGeneration).toBe(2);
+    expect(res.newSnapshot.nextTriggerAt).toBe(now + 30 * 60 * 1000);
+    expect(res.newSnapshot.alertId).toBe(1001);
+    expect(res.effects.some((e) => e.type === 'ScheduleTimer' && e.timerGeneration === 2)).toBe(true);
+    expect(res.effects.some((e) => e.type === 'ShowReminder' && e.timerGeneration === 2 && e.alertId === 1001)).toBe(true);
+  });
+
+  test('TEST_ALERT while ALERT_ACTIVE is rejected with no side effects or duplicate alert', () => {
+    const now = 100000;
+    const alertActiveSnap: TimerSnapshot = {
+      ...defaultSnapshot,
+      state: 'ALERT_ACTIVE',
+      timerGeneration: 1,
+      alertId: 1001,
+      alertStartedAt: now - 2000,
+      alertDeadlineAt: now + 13000,
+      nextTriggerAt: now + 30 * 60 * 1000,
+    };
+
+    const res = TimerDomainEngine.processEvent(alertActiveSnap, { type: 'TEST_ALERT', timestamp: now }, defaultConfig, now);
+
+    expect(res.newSnapshot).toBe(alertActiveSnap);
+    expect(res.effects.length).toBe(0);
+  });
 });

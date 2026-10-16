@@ -28,6 +28,8 @@ export class TimerDomainEngine {
         return this.handleAlertTimeout(snapshot, event, config, now);
       case 'RECOVER':
         return this.handleRecover(snapshot, config, now);
+      case 'TEST_ALERT':
+        return this.handleTestAlert(snapshot, config, now);
     }
   }
 
@@ -412,6 +414,88 @@ export class TimerDomainEngine {
         { type: 'ShowMissedNotification', alertDurationSeconds: durationSec },
         { type: 'ScheduleTimer', triggerAtMillis: nextTriggerAt, timerGeneration: snapshot.timerGeneration },
       ];
+      return { newSnapshot, effects };
+    }
+  }
+
+  private static handleTestAlert(
+    snapshot: TimerSnapshot,
+    config: EngineConfig,
+    now: number
+  ): TransitionResult {
+    if (snapshot.state === 'ALERT_ACTIVE') {
+      return { newSnapshot: snapshot, effects: [] };
+    }
+
+    const alertDurationMs = Math.max(5, config.alertDurationSeconds) * 1000;
+    const alertStartedAt = now;
+    const alertDeadlineAt = now + alertDurationMs;
+    const nextAlertId = Math.max(1000, snapshot.lastAlertId) + 1;
+
+    if (snapshot.state === 'STOPPED') {
+      const nextGen = snapshot.timerGeneration + 1;
+      const nextTriggerAt = calculateNextTriggerAt(now, config);
+      const newSnapshot: TimerSnapshot = {
+        state: 'ALERT_ACTIVE',
+        timerGeneration: nextGen,
+        alertId: nextAlertId,
+        lastAlertId: nextAlertId,
+        nextTriggerAt,
+        alertStartedAt,
+        alertDeadlineAt,
+      };
+
+      const effects: TimerEffect[] = [
+        { type: 'PersistState', snapshot: newSnapshot },
+        {
+          type: 'ShowReminder',
+          title: null,
+          body: null,
+          timerGeneration: nextGen,
+          alertId: nextAlertId,
+        },
+        {
+          type: 'ScheduleAlertTimeout',
+          deadlineAtMillis: alertDeadlineAt,
+          timerGeneration: nextGen,
+          alertId: nextAlertId,
+        },
+        {
+          type: 'ScheduleTimer',
+          triggerAtMillis: nextTriggerAt,
+          timerGeneration: nextGen,
+        },
+      ];
+
+      return { newSnapshot, effects };
+    } else {
+      // WAITING state: keep existing timerGeneration and nextTriggerAt
+      const newSnapshot: TimerSnapshot = {
+        ...snapshot,
+        state: 'ALERT_ACTIVE',
+        alertId: nextAlertId,
+        lastAlertId: nextAlertId,
+        alertStartedAt,
+        alertDeadlineAt,
+      };
+
+      const effects: TimerEffect[] = [
+        { type: 'PersistState', snapshot: newSnapshot },
+        {
+          type: 'ShowReminder',
+          title: null,
+          body: null,
+          timerGeneration: snapshot.timerGeneration,
+          alertId: nextAlertId,
+        },
+        {
+          type: 'ScheduleAlertTimeout',
+          deadlineAtMillis: alertDeadlineAt,
+          timerGeneration: snapshot.timerGeneration,
+          alertId: nextAlertId,
+        },
+      ];
+
       return { newSnapshot, effects };
     }
   }

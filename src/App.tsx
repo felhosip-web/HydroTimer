@@ -412,7 +412,11 @@ export default function App() {
   };
 
   const handleTriggerTestAlert = () => {
-    timerController.triggerTestAlert();
+    const success = timerController.triggerTestAlert();
+    if (success) {
+      soundHaptics.playAlertSound(config.soundType);
+      soundHaptics.triggerVibration(config.vibrationPattern);
+    }
   };
 
   const handleUpdateQuietHours = (enabled: boolean, start?: string, end?: string) => {
