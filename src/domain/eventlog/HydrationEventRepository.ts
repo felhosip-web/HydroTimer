@@ -14,15 +14,78 @@ export class HydrationDatabase extends Dexie {
 
 /**
  * Calculates local start-of-day and start-of-next-day Unix millisecond boundaries for a given Date.
- * Uses local calendar date components to ensure daylight-saving transitions are correctly handled.
+ * If `timeZone` is specified (e.g. 'Europe/Budapest'), computes boundaries deterministically
+ * for that target timezone regardless of host machine timezone settings.
  */
-export function getLocalDayBounds(date: Date): { startOfDay: number; startOfNextDay: number } {
-  const year = date.getFullYear();
-  const month = date.getMonth();
-  const day = date.getDate();
+export function getLocalDayBounds(
+  date: Date,
+  timeZone?: string
+): { startOfDay: number; startOfNextDay: number } {
+  if (!timeZone) {
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    const day = date.getDate();
 
-  const startOfDay = new Date(year, month, day, 0, 0, 0, 0).getTime();
-  const startOfNextDay = new Date(year, month, day + 1, 0, 0, 0, 0).getTime();
+    const startOfDay = new Date(year, month, day, 0, 0, 0, 0).getTime();
+    const startOfNextDay = new Date(year, month, day + 1, 0, 0, 0, 0).getTime();
+
+    return { startOfDay, startOfNextDay };
+  }
+
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  const parts = formatter.formatToParts(date);
+  const partMap: Record<string, string> = {};
+  for (const p of parts) {
+    partMap[p.type] = p.value;
+  }
+  const year = parseInt(partMap.year, 10);
+  const month = parseInt(partMap.month, 10) - 1;
+  const day = parseInt(partMap.day, 10);
+
+  function getStartOfDayEpoch(y: number, m: number, d: number): number {
+    let utc = Date.UTC(y, m, d, 0, 0, 0, 0);
+    const tzFormatter = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    });
+    for (let i = 0; i < 5; i++) {
+      const p = tzFormatter.formatToParts(new Date(utc));
+      const mP: Record<string, string> = {};
+      for (const part of p) mP[part.type] = part.value;
+      const h = parseInt(mP.hour, 10) % 24;
+      const min = parseInt(mP.minute, 10);
+      const s = parseInt(mP.second, 10);
+      const dy = parseInt(mP.day, 10);
+
+      let dayDiff = dy - d;
+      if (dayDiff > 15) dayDiff = -1;
+      if (dayDiff < -15) dayDiff = 1;
+
+      const diffMs = ((dayDiff * 24 + h) * 60 + min) * 60000 + s * 1000;
+      if (diffMs === 0) break;
+      utc -= diffMs;
+    }
+    return utc;
+  }
+
+  const startOfDay = getStartOfDayEpoch(year, month, day);
+  const nextDate = new Date(Date.UTC(year, month, day + 1));
+  const startOfNextDay = getStartOfDayEpoch(
+    nextDate.getUTCFullYear(),
+    nextDate.getUTCMonth(),
+    nextDate.getUTCDate()
+  );
 
   return { startOfDay, startOfNextDay };
 }
@@ -72,8 +135,8 @@ export class HydrationEventRepository {
   /**
    * Lists events scheduled on the local calendar day corresponding to `date`.
    */
-  public async listByLocalDay(date: Date): Promise<HydrationEvent[]> {
-    const { startOfDay, startOfNextDay } = getLocalDayBounds(date);
+  public async listByLocalDay(date: Date, timeZone?: string): Promise<HydrationEvent[]> {
+    const { startOfDay, startOfNextDay } = getLocalDayBounds(date, timeZone);
     return this.db.events
       .where('scheduledAt')
       .between(startOfDay, startOfNextDay, true, false)
@@ -81,7 +144,7 @@ export class HydrationEventRepository {
   }
 
   /**
-   * Updates the status of an existing event.
+   * Updates the status of an existing event atomically using a Dexie read-write transaction.
    * Throws an Error if the event is not found or database update fails.
    */
   public async updateStatus(
@@ -89,20 +152,22 @@ export class HydrationEventRepository {
     status: HydrationEventStatus,
     updatedAt: number = Date.now()
   ): Promise<HydrationEvent> {
-    const existing = await this.db.events.get(id);
-    if (!existing) {
-      throw new Error(`HydrationEvent with id '${id}' not found.`);
-    }
+    return this.db.transaction('rw', this.db.events, async () => {
+      const existing = await this.db.events.get(id);
+      if (!existing) {
+        throw new Error(`HydrationEvent with id '${id}' not found.`);
+      }
 
-    const updatedEvent: HydrationEvent = {
-      ...existing,
-      status,
-      updatedAt,
-      revision: (existing.revision ?? 1) + 1,
-    };
+      const updatedEvent: HydrationEvent = {
+        ...existing,
+        status,
+        updatedAt,
+        revision: (existing.revision ?? 1) + 1,
+      };
 
-    await this.db.events.put(updatedEvent);
-    return updatedEvent;
+      await this.db.events.put(updatedEvent);
+      return updatedEvent;
+    });
   }
 
   /**

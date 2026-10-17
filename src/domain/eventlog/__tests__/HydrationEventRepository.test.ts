@@ -7,9 +7,7 @@ Dexie.dependencies.IDBKeyRange = IDBKeyRange;
 // @ts-ignore
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { HydrationEventRepository, getLocalDayBounds } from '../HydrationEventRepository';
-import {
-  createPendingHydrationEvent,
-} from '../types';
+import { createPendingHydrationEvent } from '../types';
 
 describe('HydrationEventRepository Unit Tests (IndexedDB)', () => {
   let dbName: string;
@@ -165,53 +163,66 @@ describe('HydrationEventRepository Unit Tests (IndexedDB)', () => {
     expect(pendingIds).not.toContain('1_1002');
   });
 
-  it('6. Local-day range boundaries including Daylight Saving Time transition', async () => {
-    const testDate = new Date(2025, 4, 15, 12, 0, 0); // May 15, 2025
-    const { startOfDay, startOfNextDay } = getLocalDayBounds(testDate);
+  it('6. Deterministic DST spring forward (23h) and autumn fall back (25h) local day boundary test', async () => {
+    const budapest = 'Europe/Budapest';
 
-    // Events at boundary conditions:
-    const ePrevDay = createPendingHydrationEvent({ timerGeneration: 1, alertId: 1, scheduledAt: startOfDay - 1 });
-    const eStartOfDay = createPendingHydrationEvent({ timerGeneration: 1, alertId: 2, scheduledAt: startOfDay });
-    const eMidDay = createPendingHydrationEvent({ timerGeneration: 1, alertId: 3, scheduledAt: startOfDay + 12 * 3600 * 1000 });
-    const eEndOfDay = createPendingHydrationEvent({ timerGeneration: 1, alertId: 4, scheduledAt: startOfNextDay - 1 });
-    const eNextDay = createPendingHydrationEvent({ timerGeneration: 1, alertId: 5, scheduledAt: startOfNextDay });
+    // 1. Spring forward transition: March 30, 2025
+    const springDate = new Date('2025-03-30T12:00:00Z');
+    const { startOfDay: springStart, startOfNextDay: springNext } = getLocalDayBounds(springDate, budapest);
+    const springDurationMs = springNext - springStart;
 
-    await repo.createIfAbsent(ePrevDay);
-    await repo.createIfAbsent(eStartOfDay);
-    await repo.createIfAbsent(eMidDay);
-    await repo.createIfAbsent(eEndOfDay);
-    await repo.createIfAbsent(eNextDay);
+    expect(springDurationMs).toBe(23 * 3600 * 1000); // Exactly 23 hours
 
-    const dayEvents = await repo.listByLocalDay(testDate);
-    expect(dayEvents.length).toBe(3);
-    const dayIds = dayEvents.map((e) => e.id);
-    expect(dayIds).toContain('1_2');
-    expect(dayIds).toContain('1_3');
-    expect(dayIds).toContain('1_4');
-    expect(dayIds).not.toContain('1_1');
-    expect(dayIds).not.toContain('1_5');
+    const eSpringBefore = createPendingHydrationEvent({ timerGeneration: 1, alertId: 1, scheduledAt: springStart - 1 });
+    const eSpringStart = createPendingHydrationEvent({ timerGeneration: 1, alertId: 2, scheduledAt: springStart });
+    const eSpringMid = createPendingHydrationEvent({ timerGeneration: 1, alertId: 3, scheduledAt: springStart + 12 * 3600 * 1000 });
+    const eSpringEnd = createPendingHydrationEvent({ timerGeneration: 1, alertId: 4, scheduledAt: springNext - 1 });
+    const eSpringNext = createPendingHydrationEvent({ timerGeneration: 1, alertId: 5, scheduledAt: springNext });
 
-    // DST transition date test: Spring forward (e.g. March 30, 2025)
-    const dstDate = new Date(2025, 2, 30, 10, 0, 0);
-    const { startOfDay: dstStart, startOfNextDay: dstNext } = getLocalDayBounds(dstDate);
+    await repo.createIfAbsent(eSpringBefore);
+    await repo.createIfAbsent(eSpringStart);
+    await repo.createIfAbsent(eSpringMid);
+    await repo.createIfAbsent(eSpringEnd);
+    await repo.createIfAbsent(eSpringNext);
 
-    const dstEventBefore = createPendingHydrationEvent({ timerGeneration: 2, alertId: 1, scheduledAt: dstStart - 1000 });
-    const dstEventDuring1 = createPendingHydrationEvent({ timerGeneration: 2, alertId: 2, scheduledAt: dstStart + 1800 * 1000 }); // 00:30
-    const dstEventDuring2 = createPendingHydrationEvent({ timerGeneration: 2, alertId: 3, scheduledAt: dstNext - 1800 * 1000 }); // 23:30
-    const dstEventAfter = createPendingHydrationEvent({ timerGeneration: 2, alertId: 4, scheduledAt: dstNext + 1000 });
+    const springEvents = await repo.listByLocalDay(springDate, budapest);
+    expect(springEvents.length).toBe(3);
+    const springIds = springEvents.map((e) => e.id);
+    expect(springIds).toContain('1_2');
+    expect(springIds).toContain('1_3');
+    expect(springIds).toContain('1_4');
+    expect(springIds).not.toContain('1_1');
+    expect(springIds).not.toContain('1_5');
 
-    await repo.createIfAbsent(dstEventBefore);
-    await repo.createIfAbsent(dstEventDuring1);
-    await repo.createIfAbsent(dstEventDuring2);
-    await repo.createIfAbsent(dstEventAfter);
+    await repo.clear();
 
-    const dstEvents = await repo.listByLocalDay(dstDate);
-    expect(dstEvents.length).toBe(2);
-    const dstIds = dstEvents.map((e) => e.id);
-    expect(dstIds).toContain('2_2');
-    expect(dstIds).toContain('2_3');
-    expect(dstIds).not.toContain('2_1');
-    expect(dstIds).not.toContain('2_4');
+    // 2. Autumn fall back transition: October 26, 2025
+    const autumnDate = new Date('2025-10-26T12:00:00Z');
+    const { startOfDay: autumnStart, startOfNextDay: autumnNext } = getLocalDayBounds(autumnDate, budapest);
+    const autumnDurationMs = autumnNext - autumnStart;
+
+    expect(autumnDurationMs).toBe(25 * 3600 * 1000); // Exactly 25 hours
+
+    const eAutumnBefore = createPendingHydrationEvent({ timerGeneration: 2, alertId: 1, scheduledAt: autumnStart - 1 });
+    const eAutumnStart = createPendingHydrationEvent({ timerGeneration: 2, alertId: 2, scheduledAt: autumnStart });
+    const eAutumnMid = createPendingHydrationEvent({ timerGeneration: 2, alertId: 3, scheduledAt: autumnStart + 12 * 3600 * 1000 });
+    const eAutumnEnd = createPendingHydrationEvent({ timerGeneration: 2, alertId: 4, scheduledAt: autumnNext - 1 });
+    const eAutumnNext = createPendingHydrationEvent({ timerGeneration: 2, alertId: 5, scheduledAt: autumnNext });
+
+    await repo.createIfAbsent(eAutumnBefore);
+    await repo.createIfAbsent(eAutumnStart);
+    await repo.createIfAbsent(eAutumnMid);
+    await repo.createIfAbsent(eAutumnEnd);
+    await repo.createIfAbsent(eAutumnNext);
+
+    const autumnEvents = await repo.listByLocalDay(autumnDate, budapest);
+    expect(autumnEvents.length).toBe(3);
+    const autumnIds = autumnEvents.map((e) => e.id);
+    expect(autumnIds).toContain('2_2');
+    expect(autumnIds).toContain('2_3');
+    expect(autumnIds).toContain('2_4');
+    expect(autumnIds).not.toContain('2_1');
+    expect(autumnIds).not.toContain('2_5');
   });
 
   it('7. Persistence across repository/database reinitialization', async () => {
@@ -261,5 +272,29 @@ describe('HydrationEventRepository Unit Tests (IndexedDB)', () => {
     const pendingList = await repo.listPending();
     expect(pendingList.length).toBe(1);
     expect(pendingList[0].status).toBe('PENDING');
+  });
+
+  it('10. Concurrent status updates are executed atomically with incrementing revisions', async () => {
+    const event = createPendingHydrationEvent({
+      timerGeneration: 1,
+      alertId: 1001,
+      scheduledAt: 1710000000000,
+      createdAt: 1710000000000,
+    });
+    await repo.createIfAbsent(event);
+
+    const update1 = repo.updateStatus('1_1001', 'DRANK', 1710000001000);
+    const update2 = repo.updateStatus('1_1001', 'NOT_DRANK', 1710000002000);
+    const update3 = repo.updateStatus('1_1001', 'REJECTED', 1710000003000);
+
+    const [res1, res2, res3] = await Promise.all([update1, update2, update3]);
+
+    expect(res1).not.toBeNull();
+    expect(res2).not.toBeNull();
+    expect(res3).not.toBeNull();
+
+    const finalEvent = await repo.getById('1_1001');
+    expect(finalEvent?.revision).toBe(4);
+    expect(['DRANK', 'NOT_DRANK', 'REJECTED']).toContain(finalEvent?.status!);
   });
 });

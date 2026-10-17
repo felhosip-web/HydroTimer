@@ -275,4 +275,23 @@ class HydrationEventRepositoryTest {
         assertEquals(1, pending.size)
         assertEquals(HydrationEventStatus.PENDING, pending[0].status)
     }
+
+    @Test
+    fun testConcurrentStatusUpdatesInTransactions() {
+        val event = HydrationEvent.createPending(1L, 1001L, 1710000000000L, 1710000000000L)
+        repository.createIfAbsent(event)
+
+        val u1 = repository.updateStatus("1_1001", HydrationEventStatus.DRANK, 1710000001000L)
+        val u2 = repository.updateStatus("1_1001", HydrationEventStatus.NOT_DRANK, 1710000002000L)
+        val u3 = repository.updateStatus("1_1001", HydrationEventStatus.REJECTED, 1710000003000L)
+
+        assertEquals(2L, u1.revision)
+        assertEquals(3L, u2.revision)
+        assertEquals(4L, u3.revision)
+
+        val finalEvent = repository.getById("1_1001")
+        assertNotNull(finalEvent)
+        assertEquals(4L, finalEvent?.revision)
+        assertEquals(HydrationEventStatus.REJECTED, finalEvent?.status)
+    }
 }

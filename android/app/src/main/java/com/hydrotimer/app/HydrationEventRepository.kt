@@ -103,7 +103,7 @@ class HydrationEventRepository(private val dbHelper: HydrationEventDatabaseHelpe
     }
 
     /**
-     * Updates the status of an existing event.
+     * Updates the status of an existing event atomically using an SQLite transaction.
      * Throws an IllegalArgumentException if the event with `id` does not exist.
      */
     fun updateStatus(
@@ -111,33 +111,39 @@ class HydrationEventRepository(private val dbHelper: HydrationEventDatabaseHelpe
         status: HydrationEventStatus,
         updatedAt: Long = System.currentTimeMillis()
     ): HydrationEvent {
-        val existing = getById(id) ?: throw IllegalArgumentException("HydrationEvent with id '$id' not found.")
-
-        val updatedEvent = existing.copy(
-            status = status,
-            updatedAt = updatedAt,
-            revision = existing.revision + 1
-        )
-
         val db = dbHelper.writableDatabase
-        val values = ContentValues().apply {
-            put(HydrationEventDatabaseHelper.COLUMN_STATUS, updatedEvent.status.name)
-            put(HydrationEventDatabaseHelper.COLUMN_UPDATED_AT, updatedEvent.updatedAt)
-            put(HydrationEventDatabaseHelper.COLUMN_REVISION, updatedEvent.revision)
+        db.beginTransaction()
+        try {
+            val existing = getById(id) ?: throw IllegalArgumentException("HydrationEvent with id '$id' not found.")
+
+            val updatedEvent = existing.copy(
+                status = status,
+                updatedAt = updatedAt,
+                revision = existing.revision + 1
+            )
+
+            val values = ContentValues().apply {
+                put(HydrationEventDatabaseHelper.COLUMN_STATUS, updatedEvent.status.name)
+                put(HydrationEventDatabaseHelper.COLUMN_UPDATED_AT, updatedEvent.updatedAt)
+                put(HydrationEventDatabaseHelper.COLUMN_REVISION, updatedEvent.revision)
+            }
+
+            val rowsAffected = db.update(
+                HydrationEventDatabaseHelper.TABLE_EVENTS,
+                values,
+                "${HydrationEventDatabaseHelper.COLUMN_ID} = ?",
+                arrayOf(id)
+            )
+
+            if (rowsAffected == 0) {
+                throw IllegalArgumentException("HydrationEvent with id '$id' failed to update.")
+            }
+
+            db.setTransactionSuccessful()
+            return updatedEvent
+        } finally {
+            db.endTransaction()
         }
-
-        val rowsAffected = db.update(
-            HydrationEventDatabaseHelper.TABLE_EVENTS,
-            values,
-            "${HydrationEventDatabaseHelper.COLUMN_ID} = ?",
-            arrayOf(id)
-        )
-
-        if (rowsAffected == 0) {
-            throw IllegalArgumentException("HydrationEvent with id '$id' failed to update.")
-        }
-
-        return updatedEvent
     }
 
     /**
