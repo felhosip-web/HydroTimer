@@ -236,12 +236,12 @@ describe('HydrationEventRepository Unit Tests (IndexedDB)', () => {
 
   it('8. Database or storage failures are reported to the caller', async () => {
     // Updating non-existent ID throws
-    expect(repo.updateStatus('non_existent_id', 'DRANK')).rejects.toThrow();
+    await expect(repo.updateStatus('non_existent_id', 'DRANK')).rejects.toThrow();
 
     // Operations after DB connection is closed reject
     repo.close();
     const event = createPendingHydrationEvent({ timerGeneration: 1, alertId: 9999, scheduledAt: 1000 });
-    expect(repo.createIfAbsent(event)).rejects.toThrow();
+    await expect(repo.createIfAbsent(event)).rejects.toThrow();
   });
 
   it('9. No automatic status transition when an event is left unanswered', async () => {
