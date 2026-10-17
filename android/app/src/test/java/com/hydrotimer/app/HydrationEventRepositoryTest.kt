@@ -11,6 +11,10 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import java.time.LocalDate
 import java.time.ZoneId
+import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 @RunWith(RobolectricTestRunner::class)
 class HydrationEventRepositoryTest {
@@ -281,17 +285,48 @@ class HydrationEventRepositoryTest {
         val event = HydrationEvent.createPending(1L, 1001L, 1710000000000L, 1710000000000L)
         repository.createIfAbsent(event)
 
-        val u1 = repository.updateStatus("1_1001", HydrationEventStatus.DRANK, 1710000001000L)
-        val u2 = repository.updateStatus("1_1001", HydrationEventStatus.NOT_DRANK, 1710000002000L)
-        val u3 = repository.updateStatus("1_1001", HydrationEventStatus.REJECTED, 1710000003000L)
+        val executor = Executors.newFixedThreadPool(3)
+        val startLatch = CountDownLatch(1)
+        val completionLatch = CountDownLatch(3)
+        val errors = ConcurrentLinkedQueue<Throwable>()
+        val results = ConcurrentLinkedQueue<HydrationEvent>()
 
-        assertEquals(2L, u1.revision)
-        assertEquals(3L, u2.revision)
-        assertEquals(4L, u3.revision)
+        val statuses = listOf(
+            HydrationEventStatus.DRANK,
+            HydrationEventStatus.NOT_DRANK,
+            HydrationEventStatus.REJECTED
+        )
+
+        for (i in 0 until 3) {
+            val status = statuses[i]
+            val timestamp = 1710000001000L + (i * 1000L)
+            executor.submit {
+                try {
+                    startLatch.await()
+                    val updated = repository.updateStatus("1_1001", status, timestamp)
+                    results.add(updated)
+                } catch (t: Throwable) {
+                    errors.add(t)
+                } finally {
+                    completionLatch.countDown()
+                }
+            }
+        }
+
+        startLatch.countDown()
+        val finished = completionLatch.await(5, TimeUnit.SECONDS)
+        executor.shutdown()
+
+        assertTrue("Concurrent updates timed out", finished)
+        assertTrue("Unexpected errors during concurrent updates: $errors", errors.isEmpty())
+        assertEquals(3, results.size)
 
         val finalEvent = repository.getById("1_1001")
         assertNotNull(finalEvent)
         assertEquals(4L, finalEvent?.revision)
-        assertEquals(HydrationEventStatus.REJECTED, finalEvent?.status)
+        assertTrue(
+            "Final status ${finalEvent?.status} must be one of the submitted statuses",
+            statuses.contains(finalEvent?.status)
+        )
     }
 }
