@@ -8,7 +8,10 @@ import android.content.SharedPreferences
 import android.os.Build
 import java.util.Calendar
 
-class TimerManager(private val context: Context) {
+class TimerManager(
+    private val context: Context,
+    private val eventRepository: HydrationEventRepository = HydrationEventRepository(HydrationEventDatabaseHelper(context))
+) {
     private val prefs: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     private val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
 
@@ -44,6 +47,7 @@ class TimerManager(private val context: Context) {
         const val KEY_QUIET_HOURS_ENABLED = "quiet_hours_enabled"
         const val KEY_QUIET_HOURS_START = "quiet_hours_start"
         const val KEY_QUIET_HOURS_END = "quiet_hours_end"
+        const val KEY_IS_TEST_ALERT = "is_test_alert"
 
         const val DEFAULT_INTERVAL_MINUTES = 30
         const val DEFAULT_COUNTDOWN_MINUTES = 5
@@ -96,6 +100,7 @@ class TimerManager(private val context: Context) {
         val nextTrigger = if (prefs.contains(KEY_NEXT_TRIGGER_TIMESTAMP)) prefs.getLong(KEY_NEXT_TRIGGER_TIMESTAMP, 0L).let { if (it <= 0L) null else it } else null
         val alertStarted = if (prefs.contains(KEY_ALERT_STARTED_TIMESTAMP)) prefs.getLong(KEY_ALERT_STARTED_TIMESTAMP, 0L).let { if (it <= 0L) null else it } else null
         val alertDeadline = if (prefs.contains(KEY_ALERT_DEADLINE_TIMESTAMP)) prefs.getLong(KEY_ALERT_DEADLINE_TIMESTAMP, 0L).let { if (it <= 0L) null else it } else null
+        val isTestAlert = prefs.getBoolean(KEY_IS_TEST_ALERT, false)
 
         return TimerSnapshot(
             state = state,
@@ -104,7 +109,8 @@ class TimerManager(private val context: Context) {
             lastAlertId = lastAlertId,
             nextTriggerAt = nextTrigger,
             alertStartedAt = alertStarted,
-            alertDeadlineAt = alertDeadline
+            alertDeadlineAt = alertDeadline,
+            isTestAlert = isTestAlert
         )
     }
 
@@ -117,6 +123,7 @@ class TimerManager(private val context: Context) {
         if (snapshot.nextTriggerAt != null) editor.putLong(KEY_NEXT_TRIGGER_TIMESTAMP, snapshot.nextTriggerAt) else editor.putLong(KEY_NEXT_TRIGGER_TIMESTAMP, 0L)
         if (snapshot.alertStartedAt != null) editor.putLong(KEY_ALERT_STARTED_TIMESTAMP, snapshot.alertStartedAt) else editor.remove(KEY_ALERT_STARTED_TIMESTAMP)
         if (snapshot.alertDeadlineAt != null) editor.putLong(KEY_ALERT_DEADLINE_TIMESTAMP, snapshot.alertDeadlineAt) else editor.remove(KEY_ALERT_DEADLINE_TIMESTAMP)
+        if (snapshot.isTestAlert) editor.putBoolean(KEY_IS_TEST_ALERT, true) else editor.remove(KEY_IS_TEST_ALERT)
 
         editor.putBoolean(KEY_IS_RUNNING, snapshot.state != TimerState.STOPPED)
         editor.commit()
@@ -164,6 +171,23 @@ class TimerManager(private val context: Context) {
                 is TimerEffect.RecordMissed -> {
                     recordMissedAlert()
                     recordTodayMissed()
+                }
+                is TimerEffect.CreateHydrationEvent -> {
+                    val pendingEvent = HydrationEvent.createPending(
+                        timerGeneration = effect.timerGeneration,
+                        alertId = effect.alertId,
+                        scheduledAt = effect.scheduledAt
+                    )
+                    val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
+                    executor.execute {
+                        try {
+                            eventRepository.createIfAbsent(pendingEvent)
+                        } catch (e: Exception) {
+                            android.util.Log.e("TimerManager", "Failed to persist hydration event: ${pendingEvent.id}", e)
+                        } finally {
+                            executor.shutdown()
+                        }
+                    }
                 }
             }
         }

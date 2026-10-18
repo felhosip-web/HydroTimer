@@ -8,6 +8,8 @@ import {
 import { TimerDomainEngine } from '../domain/timer/TimerDomainEngine';
 import { TimerRepository } from '../domain/timer/TimerRepository';
 import { BrowserScheduler } from '../domain/timer/BrowserScheduler';
+import { HydrationEventRepository } from '../domain/eventlog/HydrationEventRepository';
+import { createPendingHydrationEvent } from '../domain/eventlog/types';
 import { TimerConfig } from '../types';
 
 interface UseTimerControllerProps {
@@ -44,6 +46,11 @@ export function useTimerController({
   const schedulerRef = useRef<BrowserScheduler | null>(null);
   if (!schedulerRef.current) {
     schedulerRef.current = new BrowserScheduler();
+  }
+
+  const eventRepoRef = useRef<HydrationEventRepository | null>(null);
+  if (!eventRepoRef.current) {
+    eventRepoRef.current = new HydrationEventRepository();
   }
 
   const getEngineConfig = useCallback((cfg: TimerConfig = configRef.current): EngineConfig => {
@@ -105,6 +112,19 @@ export function useTimerController({
             });
             if (onRecordMissed) {
               onRecordMissed(effect.alertDurationSeconds);
+            }
+            break;
+          }
+          case 'CreateHydrationEvent': {
+            if (eventRepoRef.current) {
+              const pendingEvent = createPendingHydrationEvent({
+                timerGeneration: effect.timerGeneration,
+                alertId: effect.alertId,
+                scheduledAt: effect.scheduledAt,
+              });
+              eventRepoRef.current.createIfAbsent(pendingEvent).catch((err) => {
+                console.error('Failed to create hydration event:', err);
+              });
             }
             break;
           }

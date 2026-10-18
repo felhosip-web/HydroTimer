@@ -58,6 +58,7 @@ describe('TimerDomainEngine Unit Tests', () => {
     expect(res.newSnapshot.alertId).toBe(1001);
     expect(res.newSnapshot.alertStartedAt).toBe(now);
     expect(res.newSnapshot.alertDeadlineAt).toBe(now + 15000);
+    expect(res.effects.some((e) => e.type === 'CreateHydrationEvent' && e.timerGeneration === 1 && e.alertId === 1001 && e.scheduledAt === now)).toBe(true);
     expect(res.effects.some((e) => e.type === 'ScheduleAlertTimeout')).toBe(true);
   });
 

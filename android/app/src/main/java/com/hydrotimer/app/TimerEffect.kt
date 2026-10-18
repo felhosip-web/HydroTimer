@@ -12,4 +12,5 @@ sealed class TimerEffect {
     object RecordAck : TimerEffect()
     object RecordMissed : TimerEffect()
     data class PersistState(val snapshot: TimerSnapshot) : TimerEffect()
+    data class CreateHydrationEvent(val timerGeneration: Long, val alertId: Long, val scheduledAt: Long) : TimerEffect()
 }
