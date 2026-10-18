@@ -6,14 +6,14 @@ import android.database.sqlite.SQLiteDatabase
 import java.time.LocalDate
 import java.time.ZoneId
 
-class HydrationEventRepository(private val dbHelper: HydrationEventDatabaseHelper) {
+open class HydrationEventRepository(private val dbHelper: HydrationEventDatabaseHelper) {
 
     /**
      * Creates an event if absent. Uses stable primary key `id`.
      * If an event with the same ID already exists, returns the existing record without overwriting.
      * If insertion fails or conflicts and no existing record can be retrieved, throws an IllegalStateException.
      */
-    fun createIfAbsent(event: HydrationEvent): HydrationEvent {
+    open fun createIfAbsent(event: HydrationEvent): HydrationEvent {
         val db = dbHelper.writableDatabase
         val values = ContentValues().apply {
             put(HydrationEventDatabaseHelper.COLUMN_ID, event.id)

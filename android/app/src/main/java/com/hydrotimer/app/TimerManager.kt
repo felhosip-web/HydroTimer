@@ -10,7 +10,8 @@ import java.util.Calendar
 
 class TimerManager(
     private val context: Context,
-    private val eventRepository: HydrationEventRepository = HydrationEventRepository(HydrationEventDatabaseHelper(context))
+    private val eventRepository: HydrationEventRepository = HydrationEventRepository(HydrationEventDatabaseHelper(context)),
+    private val executor: java.util.concurrent.Executor = java.util.concurrent.Executors.newSingleThreadExecutor()
 ) {
     private val prefs: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     private val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
@@ -178,14 +179,11 @@ class TimerManager(
                         alertId = effect.alertId,
                         scheduledAt = effect.scheduledAt
                     )
-                    val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
                     executor.execute {
                         try {
                             eventRepository.createIfAbsent(pendingEvent)
                         } catch (e: Exception) {
                             android.util.Log.e("TimerManager", "Failed to persist hydration event: ${pendingEvent.id}", e)
-                        } finally {
-                            executor.shutdown()
                         }
                     }
                 }

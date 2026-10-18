@@ -15,6 +15,7 @@ export const DEFAULT_SNAPSHOT: TimerSnapshot = {
 export class TimerRepository {
   public static loadSnapshot(): TimerSnapshot {
     try {
+      if (typeof localStorage === 'undefined') return { ...DEFAULT_SNAPSHOT };
       const data = localStorage.getItem(SNAPSHOT_KEY);
       if (!data) return { ...DEFAULT_SNAPSHOT };
       const parsed = JSON.parse(data);
@@ -34,7 +35,9 @@ export class TimerRepository {
 
   public static saveSnapshot(snapshot: TimerSnapshot): void {
     try {
-      localStorage.setItem(SNAPSHOT_KEY, JSON.stringify(snapshot));
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(SNAPSHOT_KEY, JSON.stringify(snapshot));
+      }
     } catch (e) {
       console.error('Failed to save TimerSnapshot to localStorage', e);
     }
@@ -42,7 +45,9 @@ export class TimerRepository {
 
   public static clearSnapshot(): void {
     try {
-      localStorage.removeItem(SNAPSHOT_KEY);
+      if (typeof localStorage !== 'undefined') {
+        localStorage.removeItem(SNAPSHOT_KEY);
+      }
     } catch (e) {
       console.error('Failed to clear TimerSnapshot from localStorage', e);
     }

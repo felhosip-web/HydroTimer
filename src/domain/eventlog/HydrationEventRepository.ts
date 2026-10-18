@@ -1,6 +1,17 @@
 import Dexie, { Table } from 'dexie';
 import { HydrationEvent, HydrationEventStatus } from './types';
 
+if (typeof window === 'undefined' || !window.indexedDB) {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const fakeIdb = require('fake-indexeddb');
+    Dexie.dependencies.indexedDB = fakeIdb.indexedDB;
+    Dexie.dependencies.IDBKeyRange = fakeIdb.IDBKeyRange;
+  } catch {
+    // Ignore in browser/production runtime
+  }
+}
+
 export class HydrationDatabase extends Dexie {
   events!: Table<HydrationEvent, string>;
 
@@ -106,6 +117,10 @@ export class HydrationEventRepository {
    * If an event with the same ID already exists, returns the existing record without overwriting.
    */
   public async createIfAbsent(event: HydrationEvent): Promise<HydrationEvent> {
+    const existing = await this.getById(event.id);
+    if (existing) {
+      return existing;
+    }
     try {
       await this.db.events.add(event);
       return event;
@@ -115,9 +130,9 @@ export class HydrationEventRepository {
         (err instanceof Error && (err.message.includes('Constraint') || err.message.includes('Key already exists')));
 
       if (isConstraintError) {
-        const existing = await this.db.events.get(event.id);
-        if (existing) {
-          return existing;
+        const recheck = await this.getById(event.id);
+        if (recheck) {
+          return recheck;
         }
       }
       throw err;

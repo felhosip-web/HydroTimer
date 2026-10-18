@@ -9,7 +9,7 @@ import { TimerDomainEngine } from '../domain/timer/TimerDomainEngine';
 import { TimerRepository } from '../domain/timer/TimerRepository';
 import { BrowserScheduler } from '../domain/timer/BrowserScheduler';
 import { HydrationEventRepository } from '../domain/eventlog/HydrationEventRepository';
-import { createPendingHydrationEvent } from '../domain/eventlog/types';
+import { processTimerEffects } from '../domain/timer/TimerEffectProcessor';
 import { TimerConfig } from '../types';
 
 interface UseTimerControllerProps {
@@ -74,62 +74,16 @@ export function useTimerController({
   // Execute effects produced by state machine transitions
   const executeEffects = useCallback(
     (effects: TimerEffect[]) => {
-      if (schedulerRef.current) {
-        schedulerRef.current.handleEffects(effects);
-      }
-
-      for (const effect of effects) {
-        switch (effect.type) {
-          case 'PersistState':
-            TimerRepository.saveSnapshot(effect.snapshot);
-            break;
-          case 'ShowReminder':
-            if (onShowReminder) {
-              onShowReminder(effect.timerGeneration, effect.alertId);
-            }
-            break;
-          case 'RecordDrink':
-            if (onRecordDrink) {
-              onRecordDrink(effect.amountMl);
-            }
-            break;
-          case 'RecordAck':
-            if (onRecordAck) {
-              onRecordAck();
-            }
-            break;
-          case 'RecordMissed':
-            break;
-          case 'ShowMissedNotification': {
-            const nowStr = new Date().toLocaleTimeString('hu-HU', {
-              hour: '2-digit',
-              minute: '2-digit',
-            });
-            setMissedAlertNotice({
-              title: configRef.current.title,
-              timeStr: nowStr,
-              alertDuration: effect.alertDurationSeconds,
-            });
-            if (onRecordMissed) {
-              onRecordMissed(effect.alertDurationSeconds);
-            }
-            break;
-          }
-          case 'CreateHydrationEvent': {
-            if (eventRepoRef.current) {
-              const pendingEvent = createPendingHydrationEvent({
-                timerGeneration: effect.timerGeneration,
-                alertId: effect.alertId,
-                scheduledAt: effect.scheduledAt,
-              });
-              eventRepoRef.current.createIfAbsent(pendingEvent).catch((err) => {
-                console.error('Failed to create hydration event:', err);
-              });
-            }
-            break;
-          }
-        }
-      }
+      processTimerEffects(effects, {
+        scheduler: schedulerRef.current,
+        eventRepository: eventRepoRef.current,
+        onShowReminder,
+        onRecordDrink,
+        onRecordAck,
+        onRecordMissed,
+        onShowMissedNotice: setMissedAlertNotice,
+        title: configRef.current.title,
+      });
     },
     [onShowReminder, onRecordDrink, onRecordAck, onRecordMissed]
   );
