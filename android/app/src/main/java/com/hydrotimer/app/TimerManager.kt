@@ -168,9 +168,27 @@ class TimerManager(
                 is TimerEffect.ScheduleAlertTimeout -> scheduleAlertTimeoutAt(effect.deadlineAtMillis, effect.timerGeneration, effect.alertId)
                 is TimerEffect.CancelTimer -> cancelAlarm(effect.timerGeneration)
                 is TimerEffect.CancelAlertTimeout -> cancelAlertTimeout(effect.timerGeneration, effect.alertId)
-                is TimerEffect.ShowReminder -> NotificationHelper.showWaterReminder(context, effect.title ?: getCurrentEventTitle(), effect.body ?: "Igyál egy pohár vizet!", effect.timerGeneration, effect.alertId)
-                is TimerEffect.CancelReminder -> NotificationHelper.cancelAlertNotifications(context)
-                is TimerEffect.ShowMissedNotification -> NotificationHelper.showMissedAlertNotification(context, effect.alertDurationSeconds)
+                is TimerEffect.ShowReminder -> {
+                    try {
+                        NotificationHelper.showWaterReminder(context, effect.title, effect.body, effect.timerGeneration, effect.alertId)
+                    } catch (e: Exception) {
+                        android.util.Log.e("TimerManager", "Failed to show reminder notification", e)
+                    }
+                }
+                is TimerEffect.CancelReminder -> {
+                    try {
+                        NotificationHelper.cancelAlertNotifications(context)
+                    } catch (e: Exception) {
+                        android.util.Log.e("TimerManager", "Failed to cancel reminder notification", e)
+                    }
+                }
+                is TimerEffect.ShowMissedNotification -> {
+                    try {
+                        NotificationHelper.showMissedAlertNotification(context, effect.alertDurationSeconds)
+                    } catch (e: Exception) {
+                        android.util.Log.e("TimerManager", "Failed to show missed notification", e)
+                    }
+                }
                 is TimerEffect.RecordDrink -> addDrunkMl(effect.amountMl)
                 is TimerEffect.RecordAck -> recordTodayAck()
                 is TimerEffect.RecordMissed -> {
