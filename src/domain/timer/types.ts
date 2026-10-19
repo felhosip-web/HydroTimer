@@ -8,6 +8,8 @@ export interface TimerSnapshot {
   nextTriggerAt: number | null;
   alertStartedAt: number | null;
   alertDeadlineAt: number | null;
+  alertScheduledAt?: number | null;
+  isTestAlert?: boolean;
 }
 
 export interface EngineConfig {
@@ -55,7 +57,8 @@ export type TimerEffect =
   | { type: 'ShowMissedNotification'; alertDurationSeconds: number }
   | { type: 'RecordDrink'; amountMl: number }
   | { type: 'RecordAck' }
-  | { type: 'RecordMissed' };
+  | { type: 'RecordMissed' }
+  | { type: 'CreateHydrationEvent'; timerGeneration: number; alertId: number; scheduledAt: number };
 
 export interface TransitionResult {
   newSnapshot: TimerSnapshot;

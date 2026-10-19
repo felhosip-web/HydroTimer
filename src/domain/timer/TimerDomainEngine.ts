@@ -48,6 +48,7 @@ export class TimerDomainEngine {
       nextTriggerAt,
       alertStartedAt: null,
       alertDeadlineAt: null,
+      alertScheduledAt: null,
     };
 
     const effects: TimerEffect[] = [];
@@ -77,6 +78,7 @@ export class TimerDomainEngine {
       nextTriggerAt: null,
       alertStartedAt: null,
       alertDeadlineAt: null,
+      alertScheduledAt: null,
     };
 
     const effects: TimerEffect[] = [
@@ -162,6 +164,7 @@ export class TimerDomainEngine {
 
     const shouldAutoRestart = config.mode !== 'countdown' || config.autoRestart !== false;
     const nextTriggerAt = shouldAutoRestart ? calculateNextTriggerAt(now, config) : null;
+    const scheduledAt = event.scheduledAt ?? snapshot.nextTriggerAt ?? now;
 
     const newSnapshot: TimerSnapshot = {
       ...snapshot,
@@ -170,11 +173,19 @@ export class TimerDomainEngine {
       lastAlertId: nextAlertId,
       alertStartedAt,
       alertDeadlineAt,
+      alertScheduledAt: scheduledAt,
       nextTriggerAt,
+      isTestAlert: false,
     };
 
     const effects: TimerEffect[] = [
       { type: 'PersistState', snapshot: newSnapshot },
+      {
+        type: 'CreateHydrationEvent',
+        timerGeneration: snapshot.timerGeneration,
+        alertId: nextAlertId,
+        scheduledAt,
+      },
       {
         type: 'ShowReminder',
         title: null,
@@ -237,6 +248,7 @@ export class TimerDomainEngine {
         nextTriggerAt: null,
         alertStartedAt: null,
         alertDeadlineAt: null,
+        alertScheduledAt: null,
       };
       const effects: TimerEffect[] = [
         { type: 'PersistState', snapshot: newSnapshot },
@@ -258,6 +270,7 @@ export class TimerDomainEngine {
         nextTriggerAt,
         alertStartedAt: null,
         alertDeadlineAt: null,
+        alertScheduledAt: null,
       };
       const effects: TimerEffect[] = [
         { type: 'PersistState', snapshot: newSnapshot },
@@ -307,6 +320,7 @@ export class TimerDomainEngine {
         nextTriggerAt: null,
         alertStartedAt: null,
         alertDeadlineAt: null,
+        alertScheduledAt: null,
       };
       const effects: TimerEffect[] = [
         { type: 'PersistState', snapshot: newSnapshot },
@@ -329,6 +343,7 @@ export class TimerDomainEngine {
         nextTriggerAt,
         alertStartedAt: null,
         alertDeadlineAt: null,
+        alertScheduledAt: null,
       };
       const effects: TimerEffect[] = [
         { type: 'PersistState', snapshot: newSnapshot },
@@ -383,6 +398,7 @@ export class TimerDomainEngine {
         nextTriggerAt: null,
         alertStartedAt: null,
         alertDeadlineAt: null,
+        alertScheduledAt: null,
       };
       const effects: TimerEffect[] = [
         { type: 'PersistState', snapshot: newSnapshot },
@@ -405,6 +421,7 @@ export class TimerDomainEngine {
         nextTriggerAt,
         alertStartedAt: null,
         alertDeadlineAt: null,
+        alertScheduledAt: null,
       };
       const effects: TimerEffect[] = [
         { type: 'PersistState', snapshot: newSnapshot },
@@ -443,6 +460,8 @@ export class TimerDomainEngine {
         nextTriggerAt,
         alertStartedAt,
         alertDeadlineAt,
+        alertScheduledAt: null,
+        isTestAlert: true,
       };
 
       const effects: TimerEffect[] = [
@@ -477,6 +496,8 @@ export class TimerDomainEngine {
         lastAlertId: nextAlertId,
         alertStartedAt,
         alertDeadlineAt,
+        alertScheduledAt: null,
+        isTestAlert: true,
       };
 
       const effects: TimerEffect[] = [
@@ -561,6 +582,18 @@ export class TimerDomainEngine {
           const activeAlertId = snapshot.alertId ?? Math.max(1001, snapshot.lastAlertId);
           const effects: TimerEffect[] = [
             { type: 'PersistState', snapshot },
+          ];
+
+          if (!snapshot.isTestAlert && snapshot.alertScheduledAt !== null && snapshot.alertScheduledAt !== undefined) {
+            effects.push({
+              type: 'CreateHydrationEvent',
+              timerGeneration: snapshot.timerGeneration,
+              alertId: activeAlertId,
+              scheduledAt: snapshot.alertScheduledAt,
+            });
+          }
+
+          effects.push(
             {
               type: 'ShowReminder',
               title: null,
@@ -573,8 +606,8 @@ export class TimerDomainEngine {
               deadlineAtMillis: deadlineAt,
               timerGeneration: snapshot.timerGeneration,
               alertId: activeAlertId,
-            },
-          ];
+            }
+          );
           if (snapshot.nextTriggerAt !== null) {
             effects.push({
               type: 'ScheduleTimer',

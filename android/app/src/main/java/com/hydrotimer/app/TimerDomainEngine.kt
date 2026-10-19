@@ -41,7 +41,8 @@ object TimerDomainEngine {
             lastAlertId = snapshot.lastAlertId,
             nextTriggerAt = nextTriggerAt,
             alertStartedAt = null,
-            alertDeadlineAt = null
+            alertDeadlineAt = null,
+            alertScheduledAt = null
         )
 
         val effects = mutableListOf<TimerEffect>()
@@ -69,7 +70,8 @@ object TimerDomainEngine {
             alertId = null,
             nextTriggerAt = null,
             alertStartedAt = null,
-            alertDeadlineAt = null
+            alertDeadlineAt = null,
+            alertScheduledAt = null
         )
 
         val effects = listOf(
@@ -139,17 +141,22 @@ object TimerDomainEngine {
         val shouldAutoRestart = config.mode != "countdown" || config.autoRestart
         val nextTriggerAt = if (shouldAutoRestart) calculateNextTriggerAt(now, config) else null
 
+        val scheduledAt = event.scheduledAt ?: now
+
         val newSnapshot = snapshot.copy(
             state = TimerState.ALERT_ACTIVE,
             alertId = nextAlertId,
             lastAlertId = nextAlertId,
             alertStartedAt = alertStartedAt,
             alertDeadlineAt = alertDeadlineAt,
-            nextTriggerAt = nextTriggerAt
+            alertScheduledAt = scheduledAt,
+            nextTriggerAt = nextTriggerAt,
+            isTestAlert = false
         )
 
         val effects = mutableListOf<TimerEffect>(
             TimerEffect.PersistState(newSnapshot),
+            TimerEffect.CreateHydrationEvent(timerGeneration = snapshot.timerGeneration, alertId = nextAlertId, scheduledAt = scheduledAt),
             TimerEffect.ShowReminder(title = null, body = null, timerGeneration = snapshot.timerGeneration, alertId = nextAlertId),
             TimerEffect.ScheduleAlertTimeout(deadlineAtMillis = alertDeadlineAt, timerGeneration = snapshot.timerGeneration, alertId = nextAlertId)
         )
@@ -186,7 +193,8 @@ object TimerDomainEngine {
                 alertId = null,
                 nextTriggerAt = null,
                 alertStartedAt = null,
-                alertDeadlineAt = null
+                alertDeadlineAt = null,
+                alertScheduledAt = null
             )
             val effects = listOf(
                 TimerEffect.PersistState(newSnapshot),
@@ -207,7 +215,8 @@ object TimerDomainEngine {
                 alertId = null,
                 nextTriggerAt = nextTriggerAt,
                 alertStartedAt = null,
-                alertDeadlineAt = null
+                alertDeadlineAt = null,
+                alertScheduledAt = null
             )
             val effects = listOf(
                 TimerEffect.PersistState(newSnapshot),
@@ -246,7 +255,8 @@ object TimerDomainEngine {
                 alertId = null,
                 nextTriggerAt = null,
                 alertStartedAt = null,
-                alertDeadlineAt = null
+                alertDeadlineAt = null,
+                alertScheduledAt = null
             )
             val effects = listOf(
                 TimerEffect.PersistState(newSnapshot),
@@ -268,7 +278,8 @@ object TimerDomainEngine {
                 alertId = null,
                 nextTriggerAt = nextTriggerAt,
                 alertStartedAt = null,
-                alertDeadlineAt = null
+                alertDeadlineAt = null,
+                alertScheduledAt = null
             )
             val effects = listOf(
                 TimerEffect.PersistState(newSnapshot),
@@ -313,7 +324,8 @@ object TimerDomainEngine {
                 alertId = null,
                 nextTriggerAt = null,
                 alertStartedAt = null,
-                alertDeadlineAt = null
+                alertDeadlineAt = null,
+                alertScheduledAt = null
             )
             val effects = listOf(
                 TimerEffect.PersistState(newSnapshot),
@@ -335,7 +347,8 @@ object TimerDomainEngine {
                 alertId = null,
                 nextTriggerAt = nextTriggerAt,
                 alertStartedAt = null,
-                alertDeadlineAt = null
+                alertDeadlineAt = null,
+                alertScheduledAt = null
             )
             val effects = listOf(
                 TimerEffect.PersistState(newSnapshot),
@@ -373,7 +386,9 @@ object TimerDomainEngine {
                 lastAlertId = nextAlertId,
                 nextTriggerAt = nextTriggerAt,
                 alertStartedAt = alertStartedAt,
-                alertDeadlineAt = alertDeadlineAt
+                alertDeadlineAt = alertDeadlineAt,
+                alertScheduledAt = null,
+                isTestAlert = true
             )
 
             val effects = listOf(
@@ -391,7 +406,8 @@ object TimerDomainEngine {
                 alertId = nextAlertId,
                 lastAlertId = nextAlertId,
                 alertStartedAt = alertStartedAt,
-                alertDeadlineAt = alertDeadlineAt
+                alertDeadlineAt = alertDeadlineAt,
+                isTestAlert = true
             )
 
             val effects = listOf(
@@ -461,10 +477,19 @@ object TimerDomainEngine {
                 } else {
                     val activeAlertId = snapshot.alertId ?: Math.max(1001L, snapshot.lastAlertId)
                     val effects = mutableListOf<TimerEffect>(
-                        TimerEffect.PersistState(snapshot),
-                        TimerEffect.ShowReminder(title = null, body = null, timerGeneration = snapshot.timerGeneration, alertId = activeAlertId),
-                        TimerEffect.ScheduleAlertTimeout(deadlineAtMillis = deadlineAt, timerGeneration = snapshot.timerGeneration, alertId = activeAlertId)
+                        TimerEffect.PersistState(snapshot)
                     )
+                    if (!snapshot.isTestAlert && snapshot.alertScheduledAt != null) {
+                        effects.add(
+                            TimerEffect.CreateHydrationEvent(
+                                timerGeneration = snapshot.timerGeneration,
+                                alertId = activeAlertId,
+                                scheduledAt = snapshot.alertScheduledAt
+                            )
+                        )
+                    }
+                    effects.add(TimerEffect.ShowReminder(title = null, body = null, timerGeneration = snapshot.timerGeneration, alertId = activeAlertId))
+                    effects.add(TimerEffect.ScheduleAlertTimeout(deadlineAtMillis = deadlineAt, timerGeneration = snapshot.timerGeneration, alertId = activeAlertId))
                     if (snapshot.nextTriggerAt != null) {
                         effects.add(TimerEffect.ScheduleTimer(snapshot.nextTriggerAt, snapshot.timerGeneration))
                     }

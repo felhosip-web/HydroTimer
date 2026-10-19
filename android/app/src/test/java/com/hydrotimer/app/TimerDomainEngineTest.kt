@@ -69,6 +69,7 @@ class TimerDomainEngineTest {
         assertEquals(fixedNow, result.newSnapshot.alertStartedAt)
         assertEquals(fixedNow + 15_000L, result.newSnapshot.alertDeadlineAt)
 
+        assertTrue(result.effects.any { it is TimerEffect.CreateHydrationEvent && it.timerGeneration == 2L && it.alertId == 1001L && it.scheduledAt == fixedNow })
         assertTrue(result.effects.any { it is TimerEffect.ShowReminder && it.alertId == 1001L })
         assertTrue(result.effects.any { it is TimerEffect.ScheduleAlertTimeout && it.alertId == 1001L })
     }
