@@ -25,7 +25,6 @@ class EventLogP1IntegrationTest {
     @Before
     fun setUp() {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
-        NotificationHelper.createNotificationChannel(context)
         dbHelper = HydrationEventDatabaseHelper(context)
         repository = HydrationEventRepository(dbHelper)
         repository.clearAll()

@@ -4,6 +4,18 @@ import Dexie from 'dexie';
 Dexie.dependencies.indexedDB = indexedDB;
 Dexie.dependencies.IDBKeyRange = IDBKeyRange;
 
+if (typeof globalThis.localStorage === 'undefined') {
+  const storage = new Map<string, string>();
+  globalThis.localStorage = {
+    getItem: (key: string) => storage.get(key) ?? null,
+    setItem: (key: string, value: string) => { storage.set(key, value); },
+    removeItem: (key: string) => { storage.delete(key); },
+    clear: () => storage.clear(),
+    key: (index: number) => Array.from(storage.keys())[index] ?? null,
+    get length() { return storage.size; },
+  };
+}
+
 // @ts-ignore
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
 import { HydrationEventRepository } from '../HydrationEventRepository';
