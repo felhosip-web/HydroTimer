@@ -8,5 +8,6 @@ data class TimerSnapshot(
     val nextTriggerAt: Long? = null,
     val alertStartedAt: Long? = null,
     val alertDeadlineAt: Long? = null,
+    val alertScheduledAt: Long? = null,
     val isTestAlert: Boolean = false
 )

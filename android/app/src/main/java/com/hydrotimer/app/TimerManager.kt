@@ -36,6 +36,7 @@ class TimerManager(
         const val KEY_NEXT_TRIGGER_TIMESTAMP = "next_trigger_timestamp"
         const val KEY_ALERT_STARTED_TIMESTAMP = "alert_started_timestamp"
         const val KEY_ALERT_DEADLINE_TIMESTAMP = "alert_deadline_timestamp"
+        const val KEY_ALERT_SCHEDULED_TIMESTAMP = "alert_scheduled_timestamp"
         const val KEY_TODAY_DRUNK_ML = "today_drunk_ml"
         const val KEY_DAILY_TARGET_ML = "daily_target_ml"
         const val KEY_INTAKE_PER_ALERT_ML = "intake_per_alert_ml"
@@ -101,6 +102,7 @@ class TimerManager(
         val nextTrigger = if (prefs.contains(KEY_NEXT_TRIGGER_TIMESTAMP)) prefs.getLong(KEY_NEXT_TRIGGER_TIMESTAMP, 0L).let { if (it <= 0L) null else it } else null
         val alertStarted = if (prefs.contains(KEY_ALERT_STARTED_TIMESTAMP)) prefs.getLong(KEY_ALERT_STARTED_TIMESTAMP, 0L).let { if (it <= 0L) null else it } else null
         val alertDeadline = if (prefs.contains(KEY_ALERT_DEADLINE_TIMESTAMP)) prefs.getLong(KEY_ALERT_DEADLINE_TIMESTAMP, 0L).let { if (it <= 0L) null else it } else null
+        val alertScheduled = if (prefs.contains(KEY_ALERT_SCHEDULED_TIMESTAMP)) prefs.getLong(KEY_ALERT_SCHEDULED_TIMESTAMP, 0L).let { if (it <= 0L) null else it } else null
         val isTestAlert = prefs.getBoolean(KEY_IS_TEST_ALERT, false)
 
         return TimerSnapshot(
@@ -111,6 +113,7 @@ class TimerManager(
             nextTriggerAt = nextTrigger,
             alertStartedAt = alertStarted,
             alertDeadlineAt = alertDeadline,
+            alertScheduledAt = alertScheduled,
             isTestAlert = isTestAlert
         )
     }
@@ -124,6 +127,7 @@ class TimerManager(
         if (snapshot.nextTriggerAt != null) editor.putLong(KEY_NEXT_TRIGGER_TIMESTAMP, snapshot.nextTriggerAt) else editor.putLong(KEY_NEXT_TRIGGER_TIMESTAMP, 0L)
         if (snapshot.alertStartedAt != null) editor.putLong(KEY_ALERT_STARTED_TIMESTAMP, snapshot.alertStartedAt) else editor.remove(KEY_ALERT_STARTED_TIMESTAMP)
         if (snapshot.alertDeadlineAt != null) editor.putLong(KEY_ALERT_DEADLINE_TIMESTAMP, snapshot.alertDeadlineAt) else editor.remove(KEY_ALERT_DEADLINE_TIMESTAMP)
+        if (snapshot.alertScheduledAt != null) editor.putLong(KEY_ALERT_SCHEDULED_TIMESTAMP, snapshot.alertScheduledAt) else editor.remove(KEY_ALERT_SCHEDULED_TIMESTAMP)
         if (snapshot.isTestAlert) editor.putBoolean(KEY_IS_TEST_ALERT, true) else editor.remove(KEY_IS_TEST_ALERT)
 
         editor.putBoolean(KEY_IS_RUNNING, snapshot.state != TimerState.STOPPED)

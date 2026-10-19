@@ -100,6 +100,7 @@ class EventLogP1IntegrationTest {
             nextTriggerAt = fixedNow + 30 * 60_000L,
             alertStartedAt = fixedNow,
             alertDeadlineAt = fixedNow + 15_000L,
+            alertScheduledAt = fixedNow,
             isTestAlert = false
         )
         timerManager.saveSnapshot(activeRealAlertSnap)
@@ -141,6 +142,7 @@ class EventLogP1IntegrationTest {
             nextTriggerAt = fixedNow + 30 * 60_000L,
             alertStartedAt = fixedNow,
             alertDeadlineAt = fixedNow + 15_000L,
+            alertScheduledAt = fixedNow,
             isTestAlert = false
         )
         timerManager.saveSnapshot(activeSnap)
@@ -163,6 +165,7 @@ class EventLogP1IntegrationTest {
             nextTriggerAt = fixedNow + 30 * 60_000L,
             alertStartedAt = fixedNow,
             alertDeadlineAt = fixedNow + 15_000L,
+            alertScheduledAt = null,
             isTestAlert = true
         )
         timerManager.saveSnapshot(testAlertSnap)
@@ -197,9 +200,64 @@ class EventLogP1IntegrationTest {
             timestamp = fixedNow
         )
 
-        // Dispatch must complete without throwing and update state to ALERT_ACTIVE
         val result = timerManagerWithFailingRepo.dispatch(triggerEvent, fixedNow)
         assertEquals(TimerState.ALERT_ACTIVE, result.newSnapshot.state)
         assertEquals(1001L, result.newSnapshot.alertId)
+    }
+
+    @Test
+    fun test7_delayedTriggerPreservesAuthoritativeScheduledAtDuringCreationAndRecovery() {
+        val scheduledTime = fixedNow
+        val delayedActivationTime = fixedNow + 5000L // 5 seconds delayed
+
+        val waitingSnap = TimerSnapshot(
+            state = TimerState.WAITING,
+            timerGeneration = 1L,
+            nextTriggerAt = scheduledTime
+        )
+        timerManager.saveSnapshot(waitingSnap)
+
+        val triggerEvent = TimerEvent(
+            type = TimerEventType.TIMER_TRIGGER,
+            timerGeneration = 1L,
+            scheduledAt = scheduledTime,
+            timestamp = delayedActivationTime
+        )
+
+        val result = timerManager.dispatch(triggerEvent, delayedActivationTime)
+        assertEquals(delayedActivationTime, result.newSnapshot.alertStartedAt)
+        assertEquals(scheduledTime, result.newSnapshot.alertScheduledAt)
+
+        val saved = repository.getById("1_1001")
+        assertEquals(scheduledTime, saved?.scheduledAt) // Preserves original scheduled time, not delayed activation time
+
+        // Clear repo and simulate recovery of missing event
+        repository.clearAll()
+
+        timerManager.dispatch(TimerEvent(type = TimerEventType.RECOVER, timestamp = delayedActivationTime + 2000L), delayedActivationTime + 2000L)
+
+        val recovered = repository.getById("1_1001")
+        assertEquals(scheduledTime, recovered?.scheduledAt)
+    }
+
+    @Test
+    fun test8_legacyActiveAlertSnapshotWithoutAlertScheduledAtSkipsEventCreation() {
+        val legacySnap = TimerSnapshot(
+            state = TimerState.ALERT_ACTIVE,
+            timerGeneration = 1L,
+            alertId = 1001L,
+            lastAlertId = 1001L,
+            nextTriggerAt = fixedNow + 30 * 60_000L,
+            alertStartedAt = fixedNow,
+            alertDeadlineAt = fixedNow + 15_000L,
+            alertScheduledAt = null,
+            isTestAlert = false
+        )
+        timerManager.saveSnapshot(legacySnap)
+
+        timerManager.dispatch(TimerEvent(type = TimerEventType.RECOVER, timestamp = fixedNow + 2000L), fixedNow + 2000L)
+
+        val pendingList = repository.listPending()
+        assertEquals(0, pendingList.size) // Legacy snapshot safely skips recreation without fake data fabrication
     }
 }

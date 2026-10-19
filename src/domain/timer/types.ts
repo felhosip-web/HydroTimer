@@ -8,6 +8,7 @@ export interface TimerSnapshot {
   nextTriggerAt: number | null;
   alertStartedAt: number | null;
   alertDeadlineAt: number | null;
+  alertScheduledAt?: number | null;
   isTestAlert?: boolean;
 }
 

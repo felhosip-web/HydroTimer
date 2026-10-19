@@ -6,7 +6,7 @@ Dexie.dependencies.IDBKeyRange = IDBKeyRange;
 
 // @ts-ignore
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
-import { HydrationEventRepository, HydrationDatabase } from '../HydrationEventRepository';
+import { HydrationEventRepository } from '../HydrationEventRepository';
 import { TimerDomainEngine } from '../../timer/TimerDomainEngine';
 import { TimerSnapshot, EngineConfig, TimerEvent } from '../../timer/types';
 import { processTimerEffects } from '../../timer/TimerEffectProcessor';
@@ -49,7 +49,7 @@ describe('Event Log P1 Integration Tests (Web Effect Boundary & Dexie)', () => {
   });
 
   // 1. Production effect execution path creates PENDING event for real alert.
-  test.only('1. Effect execution path persists PENDING event for real alert', async () => {
+  test('1. Effect execution path persists PENDING event for real alert', async () => {
     const waitingSnap: TimerSnapshot = {
       state: 'WAITING',
       timerGeneration: 1,
@@ -84,7 +84,7 @@ describe('Event Log P1 Integration Tests (Web Effect Boundary & Dexie)', () => {
   });
 
   // 2. Production effect execution path excludes TEST_ALERT.
-  test.only('2. Effect execution path excludes TEST_ALERT', async () => {
+  test('2. Effect execution path excludes TEST_ALERT', async () => {
     const waitingSnap: TimerSnapshot = {
       state: 'WAITING',
       timerGeneration: 1,
@@ -118,6 +118,7 @@ describe('Event Log P1 Integration Tests (Web Effect Boundary & Dexie)', () => {
       nextTriggerAt: fixedNow + 30 * 60 * 1000,
       alertStartedAt: fixedNow,
       alertDeadlineAt: fixedNow + 15000,
+      alertScheduledAt: fixedNow,
       isTestAlert: false,
     };
 
@@ -158,6 +159,7 @@ describe('Event Log P1 Integration Tests (Web Effect Boundary & Dexie)', () => {
       nextTriggerAt: fixedNow + 30 * 60 * 1000,
       alertStartedAt: fixedNow,
       alertDeadlineAt: fixedNow + 15000,
+      alertScheduledAt: fixedNow,
       isTestAlert: false,
     };
 
@@ -180,6 +182,7 @@ describe('Event Log P1 Integration Tests (Web Effect Boundary & Dexie)', () => {
       nextTriggerAt: fixedNow + 30 * 60 * 1000,
       alertStartedAt: fixedNow,
       alertDeadlineAt: fixedNow + 15000,
+      alertScheduledAt: null,
       isTestAlert: true,
     };
 
@@ -220,5 +223,67 @@ describe('Event Log P1 Integration Tests (Web Effect Boundary & Dexie)', () => {
 
     // Executing effects on a failing repository must not throw or crash
     await expect(processTimerEffects(result.effects, { eventRepository: failingRepo })).resolves.toBeUndefined();
+  });
+
+  // 7. Delayed trigger preserves authoritative scheduledAt during creation and recovery.
+  test('7. Delayed trigger preserves authoritative scheduledAt during creation and recovery', async () => {
+    const scheduledTime = fixedNow;
+    const delayedActivationTime = fixedNow + 5000; // Callback delayed by 5s
+
+    const waitingSnap: TimerSnapshot = {
+      state: 'WAITING',
+      timerGeneration: 1,
+      alertId: null,
+      lastAlertId: 0,
+      nextTriggerAt: scheduledTime,
+      alertStartedAt: null,
+      alertDeadlineAt: null,
+    };
+
+    const triggerEvent: TimerEvent = {
+      type: 'TIMER_TRIGGER',
+      timerGeneration: 1,
+      scheduledAt: scheduledTime,
+      timestamp: delayedActivationTime,
+    };
+
+    const result = TimerDomainEngine.processEvent(waitingSnap, triggerEvent, baseConfig, delayedActivationTime);
+    expect(result.newSnapshot.alertStartedAt).toBe(delayedActivationTime);
+    expect(result.newSnapshot.alertScheduledAt).toBe(scheduledTime);
+
+    await processTimerEffects(result.effects, { eventRepository: repository });
+
+    const saved = await repository.getById('1_1001');
+    expect(saved?.scheduledAt).toBe(scheduledTime); // Must be original scheduledTime, NOT delayedActivationTime
+
+    // Clear repository to test recovery of missing event
+    await repository.clear();
+
+    const recoverResult = TimerDomainEngine.processEvent(result.newSnapshot, { type: 'RECOVER', timestamp: delayedActivationTime + 2000 }, baseConfig, delayedActivationTime + 2000);
+    await processTimerEffects(recoverResult.effects, { eventRepository: repository });
+
+    const recovered = await repository.getById('1_1001');
+    expect(recovered?.scheduledAt).toBe(scheduledTime); // Still original scheduledTime
+  });
+
+  // 8. Legacy active alert snapshot without alertScheduledAt safely skips event creation without fabricating timestamps.
+  test('8. Legacy active alert snapshot without alertScheduledAt skips event creation', async () => {
+    const legacySnap: TimerSnapshot = {
+      state: 'ALERT_ACTIVE',
+      timerGeneration: 1,
+      alertId: 1001,
+      lastAlertId: 1001,
+      nextTriggerAt: fixedNow + 30 * 60 * 1000,
+      alertStartedAt: fixedNow,
+      alertDeadlineAt: fixedNow + 15000,
+      // alertScheduledAt is undefined (legacy format)
+      isTestAlert: false,
+    };
+
+    const recoverResult = TimerDomainEngine.processEvent(legacySnap, { type: 'RECOVER', timestamp: fixedNow + 2000 }, baseConfig, fixedNow + 2000);
+    await processTimerEffects(recoverResult.effects, { eventRepository: repository });
+
+    const pendingList = await repository.listPending();
+    expect(pendingList.length).toBe(0); // Safely skipped, no fake event fabricated
   });
 });

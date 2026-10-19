@@ -41,7 +41,8 @@ object TimerDomainEngine {
             lastAlertId = snapshot.lastAlertId,
             nextTriggerAt = nextTriggerAt,
             alertStartedAt = null,
-            alertDeadlineAt = null
+            alertDeadlineAt = null,
+            alertScheduledAt = null
         )
 
         val effects = mutableListOf<TimerEffect>()
@@ -69,7 +70,8 @@ object TimerDomainEngine {
             alertId = null,
             nextTriggerAt = null,
             alertStartedAt = null,
-            alertDeadlineAt = null
+            alertDeadlineAt = null,
+            alertScheduledAt = null
         )
 
         val effects = listOf(
@@ -139,17 +141,18 @@ object TimerDomainEngine {
         val shouldAutoRestart = config.mode != "countdown" || config.autoRestart
         val nextTriggerAt = if (shouldAutoRestart) calculateNextTriggerAt(now, config) else null
 
+        val scheduledAt = event.scheduledAt ?: now
+
         val newSnapshot = snapshot.copy(
             state = TimerState.ALERT_ACTIVE,
             alertId = nextAlertId,
             lastAlertId = nextAlertId,
             alertStartedAt = alertStartedAt,
             alertDeadlineAt = alertDeadlineAt,
+            alertScheduledAt = scheduledAt,
             nextTriggerAt = nextTriggerAt,
             isTestAlert = false
         )
-
-        val scheduledAt = event.scheduledAt ?: now
 
         val effects = mutableListOf<TimerEffect>(
             TimerEffect.PersistState(newSnapshot),
@@ -190,7 +193,8 @@ object TimerDomainEngine {
                 alertId = null,
                 nextTriggerAt = null,
                 alertStartedAt = null,
-                alertDeadlineAt = null
+                alertDeadlineAt = null,
+                alertScheduledAt = null
             )
             val effects = listOf(
                 TimerEffect.PersistState(newSnapshot),
@@ -211,7 +215,8 @@ object TimerDomainEngine {
                 alertId = null,
                 nextTriggerAt = nextTriggerAt,
                 alertStartedAt = null,
-                alertDeadlineAt = null
+                alertDeadlineAt = null,
+                alertScheduledAt = null
             )
             val effects = listOf(
                 TimerEffect.PersistState(newSnapshot),
@@ -250,7 +255,8 @@ object TimerDomainEngine {
                 alertId = null,
                 nextTriggerAt = null,
                 alertStartedAt = null,
-                alertDeadlineAt = null
+                alertDeadlineAt = null,
+                alertScheduledAt = null
             )
             val effects = listOf(
                 TimerEffect.PersistState(newSnapshot),
@@ -272,7 +278,8 @@ object TimerDomainEngine {
                 alertId = null,
                 nextTriggerAt = nextTriggerAt,
                 alertStartedAt = null,
-                alertDeadlineAt = null
+                alertDeadlineAt = null,
+                alertScheduledAt = null
             )
             val effects = listOf(
                 TimerEffect.PersistState(newSnapshot),
@@ -317,7 +324,8 @@ object TimerDomainEngine {
                 alertId = null,
                 nextTriggerAt = null,
                 alertStartedAt = null,
-                alertDeadlineAt = null
+                alertDeadlineAt = null,
+                alertScheduledAt = null
             )
             val effects = listOf(
                 TimerEffect.PersistState(newSnapshot),
@@ -339,7 +347,8 @@ object TimerDomainEngine {
                 alertId = null,
                 nextTriggerAt = nextTriggerAt,
                 alertStartedAt = null,
-                alertDeadlineAt = null
+                alertDeadlineAt = null,
+                alertScheduledAt = null
             )
             val effects = listOf(
                 TimerEffect.PersistState(newSnapshot),
@@ -378,6 +387,7 @@ object TimerDomainEngine {
                 nextTriggerAt = nextTriggerAt,
                 alertStartedAt = alertStartedAt,
                 alertDeadlineAt = alertDeadlineAt,
+                alertScheduledAt = null,
                 isTestAlert = true
             )
 
@@ -469,12 +479,12 @@ object TimerDomainEngine {
                     val effects = mutableListOf<TimerEffect>(
                         TimerEffect.PersistState(snapshot)
                     )
-                    if (!snapshot.isTestAlert) {
+                    if (!snapshot.isTestAlert && snapshot.alertScheduledAt != null) {
                         effects.add(
                             TimerEffect.CreateHydrationEvent(
                                 timerGeneration = snapshot.timerGeneration,
                                 alertId = activeAlertId,
-                                scheduledAt = snapshot.alertStartedAt ?: now
+                                scheduledAt = snapshot.alertScheduledAt
                             )
                         )
                     }
