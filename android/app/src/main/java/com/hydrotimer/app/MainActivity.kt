@@ -3,24 +3,37 @@ package com.hydrotimer.app
 import android.Manifest
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
+import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Bundle
 import android.os.CountDownTimer
 import android.os.PowerManager
+import android.view.LayoutInflater
 import android.view.View
 import android.widget.EditText
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.hydrotimer.app.databinding.ActivityMainBinding
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var timerManager: TimerManager
+    private lateinit var eventRepository: HydrationEventRepository
+
     private var uiCountDownTimer: CountDownTimer? = null
+    private var selectedEventDate: LocalDate = LocalDate.now()
+    private var activeEventsQueryToken: Long = 0L
+    private var currentSubTab: String = "stats"
 
     private val prefChangeListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
         if (key == TimerManager.KEY_STATE ||
@@ -47,12 +60,15 @@ class MainActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         timerManager = TimerManager(this)
+        eventRepository = HydrationEventRepository(HydrationEventDatabaseHelper(this))
+
         NotificationHelper.createNotificationChannel(this)
         timerManager.getPrefs().registerOnSharedPreferenceChangeListener(prefChangeListener)
 
         checkNotificationPermission()
         checkBatteryOptimization()
         setupUI()
+        updateDateHeaderUI()
     }
 
     override fun onResume() {
@@ -60,6 +76,9 @@ class MainActivity : AppCompatActivity() {
         timerManager.dispatch(TimerEvent(TimerEventType.RECOVER, timestamp = System.currentTimeMillis()))
         updateUIState()
         checkMissedAlertBanner()
+        if (currentSubTab == "events") {
+            loadEventsForSelectedDate()
+        }
     }
 
     private fun setupUI() {
@@ -163,7 +182,159 @@ class MainActivity : AppCompatActivity() {
         binding.btnEditProgress.setOnClickListener {
             showEditProgressDialog()
         }
+
+        // Internal subtab navigation inside cardStats
+        binding.btnTabStats.setOnClickListener { switchSubTab("stats") }
+        binding.btnTabEvents.setOnClickListener { switchSubTab("events") }
+
+        // Event Log Date Navigation
+        binding.btnPrevDay.setOnClickListener { navigateDate(-1) }
+        binding.btnNextDay.setOnClickListener { navigateDate(1) }
+        binding.btnSelectDate.setOnClickListener { showDatePickerDialog() }
+        binding.btnRetryEvents.setOnClickListener { loadEventsForSelectedDate() }
     }
+
+    private fun switchSubTab(tab: String) {
+        currentSubTab = tab
+        if (tab == "stats") {
+            binding.layoutStatsContent.visibility = View.VISIBLE
+            binding.layoutEventsContent.visibility = View.GONE
+
+            binding.btnTabStats.setBackgroundColor(ContextCompat.getColor(this, R.color.primary))
+            binding.btnTabStats.setTextColor(ContextCompat.getColor(this, R.color.text_primary))
+            binding.btnTabStats.strokeWidth = 0
+
+            binding.btnTabEvents.setBackgroundColor(ContextCompat.getColor(this, android.R.color.transparent))
+            binding.btnTabEvents.setTextColor(ContextCompat.getColor(this, R.color.text_secondary))
+            binding.btnTabEvents.strokeWidth = 2
+        } else {
+            binding.layoutStatsContent.visibility = View.GONE
+            binding.layoutEventsContent.visibility = View.VISIBLE
+
+            binding.btnTabEvents.setBackgroundColor(ContextCompat.getColor(this, R.color.primary))
+            binding.btnTabEvents.setTextColor(ContextCompat.getColor(this, R.color.text_primary))
+            binding.btnTabEvents.strokeWidth = 0
+
+            binding.btnTabStats.setBackgroundColor(ContextCompat.getColor(this, android.R.color.transparent))
+            binding.btnTabStats.setTextColor(ContextCompat.getColor(this, R.color.text_secondary))
+            binding.btnTabStats.strokeWidth = 2
+
+            loadEventsForSelectedDate()
+        }
+    }
+
+    private fun navigateDate(dayDelta: Int) {
+        val today = LocalDate.now()
+        if (dayDelta > 0 && selectedEventDate >= today) {
+            return
+        }
+        val next = selectedEventDate.plusDays(dayDelta.toLong())
+        selectedEventDate = if (next > today) today else next
+        updateDateHeaderUI()
+        loadEventsForSelectedDate()
+    }
+
+    private fun showDatePickerDialog() {
+        val today = LocalDate.now()
+        val dialog = android.app.DatePickerDialog(
+            this,
+            { _, year, month, dayOfMonth ->
+                val chosen = LocalDate.of(year, month + 1, dayOfMonth)
+                selectedEventDate = if (chosen > today) today else chosen
+                updateDateHeaderUI()
+                loadEventsForSelectedDate()
+            },
+            selectedEventDate.year,
+            selectedEventDate.monthValue - 1,
+            selectedEventDate.dayOfMonth
+        )
+        dialog.datePicker.maxDate = System.currentTimeMillis()
+        dialog.show()
+    }
+
+    private fun updateDateHeaderUI() {
+        val today = LocalDate.now()
+        val isToday = selectedEventDate == today
+        binding.btnNextDay.isEnabled = !isToday
+        binding.btnNextDay.alpha = if (isToday) 0.3f else 1.0f
+
+        val formattedStr = String.format("%04d. %02d. %02d.", selectedEventDate.year, selectedEventDate.monthValue, selectedEventDate.dayOfMonth)
+        binding.tvSelectedDate.text = if (isToday) "$formattedStr (Ma)" else formattedStr
+    }
+
+    private fun loadEventsForSelectedDate() {
+        binding.layoutEventsLoading.visibility = View.VISIBLE
+        binding.layoutEventsError.visibility = View.GONE
+        binding.tvEventsEmpty.visibility = View.GONE
+        binding.layoutEventCards.visibility = View.GONE
+
+        val token = ++activeEventsQueryToken
+
+        Thread {
+            try {
+                val list = eventRepository.listByLocalDay(selectedEventDate)
+                val events = list.sortedByDescending { it.scheduledAt }
+
+                runOnUiThread {
+                    if (token != activeEventsQueryToken) return@runOnUiThread
+
+                    binding.layoutEventsLoading.visibility = View.GONE
+                    if (events.isEmpty()) {
+                        binding.tvEventsEmpty.visibility = View.VISIBLE
+                        binding.tvEventsEmpty.text = "Erre a napra nincs rögzített esemény."
+                    } else {
+                        binding.layoutEventCards.removeAllViews()
+                        binding.layoutEventCards.visibility = View.VISIBLE
+                        for (event in events) {
+                            val cardView = renderEventCardView(event)
+                            binding.layoutEventCards.addView(cardView)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    if (token != activeEventsQueryToken) return@runOnUiThread
+                    binding.layoutEventsLoading.visibility = View.GONE
+                    binding.layoutEventsError.visibility = View.VISIBLE
+                    binding.tvEventsErrorMessage.text = "Nem sikerült az események betöltése."
+                }
+            }
+        }.start()
+    }
+
+    private fun renderEventCardView(event: HydrationEvent): View {
+        val view = LayoutInflater.from(this).inflate(R.layout.item_hydration_event, binding.layoutEventCards, false)
+        val tvTime = view.findViewById<TextView>(R.id.tvEventTime)
+        val tvStatus = view.findViewById<TextView>(R.id.tvEventStatus)
+
+        val localTime = Instant.ofEpochMilli(event.scheduledAt)
+            .atZone(ZoneId.systemDefault())
+            .toLocalTime()
+        val timeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+        tvTime.text = localTime.format(timeFormatter)
+
+        val (labelText, textColorHex, bgColorHex, strokeColorHex) = when (event.status) {
+            HydrationEventStatus.PENDING -> Quadruple("Függőben", "#F59E0B", "#2A2000", "#D97706")
+            HydrationEventStatus.DRANK -> Quadruple("Megtörtént", "#34D399", "#064E3B", "#059669")
+            HydrationEventStatus.NOT_DRANK -> Quadruple("Nem történt meg", "#FB923C", "#7C2D12", "#EA580C")
+            HydrationEventStatus.REJECTED -> Quadruple("Elutasítva", "#FB7185", "#881337", "#E11D48")
+        }
+
+        tvStatus.text = labelText
+        tvStatus.setTextColor(Color.parseColor(textColorHex))
+
+        val bgDrawable = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = 16f
+            setColor(Color.parseColor(bgColorHex))
+            setStroke(2, Color.parseColor(strokeColorHex))
+        }
+        tvStatus.background = bgDrawable
+
+        return view
+    }
+
+    private data class Quadruple<A, B, C, D>(val first: A, val second: B, val third: C, val fourth: D)
 
     private fun setInterval(minutes: Int) {
         val sanitized = Math.max(1, minutes)

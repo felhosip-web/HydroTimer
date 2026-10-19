@@ -90,7 +90,7 @@ open class HydrationEventRepository(private val dbHelper: HydrationEventDatabase
             selectionArgs,
             null,
             null,
-            "${HydrationEventDatabaseHelper.COLUMN_SCHEDULED_AT} ASC"
+            "${HydrationEventDatabaseHelper.COLUMN_SCHEDULED_AT} DESC"
         )
 
         val events = mutableListOf<HydrationEvent>()

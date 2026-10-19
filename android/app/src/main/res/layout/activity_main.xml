@@ -648,112 +648,292 @@
                 android:orientation="vertical"
                 android:padding="16dp">
 
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="📊 Mai Statisztika"
-                    android:textColor="@color/text_primary"
-                    android:textSize="13sp"
-                    android:textStyle="bold"
-                    android:layout_marginBottom="12dp" />
-
+                <!-- Subtab toggle -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:weightSum="4">
+                    android:layout_marginBottom="12dp"
+                    android:orientation="horizontal">
 
-                    <!-- Megivott Víz -->
-                    <LinearLayout
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnTabStats"
                         android:layout_width="0dp"
-                        android:layout_height="wrap_content"
+                        android:layout_height="40dp"
                         android:layout_weight="1"
-                        android:gravity="center"
-                        android:orientation="vertical">
-                        <TextView
-                            android:layout_width="wrap_content"
+                        android:layout_marginEnd="4dp"
+                        android:backgroundTint="@color/primary"
+                        android:text="Statisztikák"
+                        android:textAllCaps="false"
+                        android:textColor="@color/text_primary"
+                        android:textSize="12sp"
+                        app:cornerRadius="12dp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnTabEvents"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="0dp"
+                        android:layout_height="40dp"
+                        android:layout_weight="1"
+                        android:layout_marginStart="4dp"
+                        android:text="Események"
+                        android:textAllCaps="false"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="12sp"
+                        app:cornerRadius="12dp"
+                        app:strokeColor="#475569" />
+
+                </LinearLayout>
+
+                <!-- Statistics Content Subview -->
+                <LinearLayout
+                    android:id="@+id/layoutStatsContent"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="📊 Mai Statisztika"
+                        android:textColor="@color/text_primary"
+                        android:textSize="13sp"
+                        android:textStyle="bold"
+                        android:layout_marginBottom="12dp" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:weightSum="4">
+
+                        <!-- Megivott Víz -->
+                        <LinearLayout
+                            android:layout_width="0dp"
                             android:layout_height="wrap_content"
-                            android:text="Megivott"
-                            android:textColor="@color/text_secondary"
-                            android:textSize="10sp" />
-                        <TextView
-                            android:id="@+id/tvStatsDrunk"
-                            android:layout_width="wrap_content"
+                            android:layout_weight="1"
+                            android:gravity="center"
+                            android:orientation="vertical">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Megivott"
+                                android:textColor="@color/text_secondary"
+                                android:textSize="10sp" />
+                            <TextView
+                                android:id="@+id/tvStatsDrunk"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="0 ml"
+                                android:textColor="#34D399"
+                                android:textSize="12sp"
+                                android:textStyle="bold" />
+                        </LinearLayout>
+
+                        <!-- Hátralévő Víz -->
+                        <LinearLayout
+                            android:layout_width="0dp"
                             android:layout_height="wrap_content"
-                            android:text="0 ml"
-                            android:textColor="#34D399"
-                            android:textSize="12sp"
-                            android:textStyle="bold" />
+                            android:layout_weight="1"
+                            android:gravity="center"
+                            android:orientation="vertical">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Hátralévő"
+                                android:textColor="@color/text_secondary"
+                                android:textSize="10sp" />
+                            <TextView
+                                android:id="@+id/tvStatsRemaining"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="0 ml"
+                                android:textColor="@color/accent"
+                                android:textSize="12sp"
+                                android:textStyle="bold" />
+                        </LinearLayout>
+
+                        <!-- Nyugtázott Jelzések -->
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:gravity="center"
+                            android:orientation="vertical">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Nyugtázott"
+                                android:textColor="@color/text_secondary"
+                                android:textSize="10sp" />
+                            <TextView
+                                android:id="@+id/tvStatsAck"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="0"
+                                android:textColor="@color/text_primary"
+                                android:textSize="12sp"
+                                android:textStyle="bold" />
+                        </LinearLayout>
+
+                        <!-- Elmulasztott Jelzések -->
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:gravity="center"
+                            android:orientation="vertical">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Elmulasztott"
+                                android:textColor="@color/text_secondary"
+                                android:textSize="10sp" />
+                            <TextView
+                                android:id="@+id/tvStatsMissed"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="0"
+                                android:textColor="#F87171"
+                                android:textSize="12sp"
+                                android:textStyle="bold" />
+                        </LinearLayout>
+
                     </LinearLayout>
 
-                    <!-- Hátralévő Víz -->
-                    <LinearLayout
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:gravity="center"
-                        android:orientation="vertical">
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="Hátralévő"
-                            android:textColor="@color/text_secondary"
-                            android:textSize="10sp" />
-                        <TextView
-                            android:id="@+id/tvStatsRemaining"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="0 ml"
-                            android:textColor="@color/accent"
-                            android:textSize="12sp"
-                            android:textStyle="bold" />
-                    </LinearLayout>
+                </LinearLayout>
 
-                    <!-- Nyugtázott Jelzések -->
+                <!-- Event Log Subview -->
+                <LinearLayout
+                    android:id="@+id/layoutEventsContent"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:visibility="gone">
+
+                    <!-- Date Navigation Header -->
                     <LinearLayout
-                        android:layout_width="0dp"
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:gravity="center"
-                        android:orientation="vertical">
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:padding="8dp"
+                        android:background="#0F172A">
+
+                        <ImageButton
+                            android:id="@+id/btnPrevDay"
+                            android:layout_width="36dp"
+                            android:layout_height="36dp"
+                            android:background="?attr/selectableItemBackgroundBorderless"
+                            android:contentDescription="Előző nap"
+                            android:src="@android:drawable/ic_media_previous"
+                            app:tint="@color/text_primary" />
+
                         <TextView
-                            android:layout_width="wrap_content"
+                            android:id="@+id/tvSelectedDate"
+                            android:layout_width="0dp"
                             android:layout_height="wrap_content"
-                            android:text="Nyugtázott"
-                            android:textColor="@color/text_secondary"
-                            android:textSize="10sp" />
-                        <TextView
-                            android:id="@+id/tvStatsAck"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="0"
+                            android:layout_weight="1"
+                            android:gravity="center"
+                            android:fontFamily="monospace"
+                            android:text="2026. 10. 19. (Ma)"
                             android:textColor="@color/text_primary"
                             android:textSize="12sp"
                             android:textStyle="bold" />
+
+                        <ImageButton
+                            android:id="@+id/btnSelectDate"
+                            android:layout_width="36dp"
+                            android:layout_height="36dp"
+                            android:background="?attr/selectableItemBackgroundBorderless"
+                            android:contentDescription="Dátum kiválasztása"
+                            android:src="@android:drawable/ic_menu_my_calendar"
+                            app:tint="@color/accent" />
+
+                        <ImageButton
+                            android:id="@+id/btnNextDay"
+                            android:layout_width="36dp"
+                            android:layout_height="36dp"
+                            android:background="?attr/selectableItemBackgroundBorderless"
+                            android:contentDescription="Következő nap"
+                            android:src="@android:drawable/ic_media_next"
+                            app:tint="@color/text_primary" />
+
                     </LinearLayout>
 
-                    <!-- Elmulasztott Jelzések -->
+                    <!-- Loading State -->
                     <LinearLayout
-                        android:layout_width="0dp"
+                        android:id="@+id/layoutEventsLoading"
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_weight="1"
                         android:gravity="center"
-                        android:orientation="vertical">
+                        android:orientation="vertical"
+                        android:padding="20dp">
+
+                        <ProgressBar
+                            android:layout_width="24dp"
+                            android:layout_height="24dp" />
+
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="Elmulasztott"
+                            android:layout_marginTop="8dp"
+                            android:text="Események betöltése..."
                             android:textColor="@color/text_secondary"
-                            android:textSize="10sp" />
+                            android:textSize="12sp" />
+
+                    </LinearLayout>
+
+                    <!-- Empty State -->
+                    <TextView
+                        android:id="@+id/tvEventsEmpty"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center"
+                        android:padding="20dp"
+                        android:text="Erre a napra nincs rögzített esemény."
+                        android:textColor="@color/text_secondary"
+                        android:textSize="12sp"
+                        android:visibility="gone" />
+
+                    <!-- Error State -->
+                    <LinearLayout
+                        android:id="@+id/layoutEventsError"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center"
+                        android:orientation="vertical"
+                        android:padding="16dp"
+                        android:visibility="gone">
+
                         <TextView
-                            android:id="@+id/tvStatsMissed"
+                            android:id="@+id/tvEventsErrorMessage"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="0"
+                            android:text="Hiba történt az események betöltése során."
                             android:textColor="#F87171"
-                            android:textSize="12sp"
-                            android:textStyle="bold" />
+                            android:textSize="12sp" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btnRetryEvents"
+                            style="@style/Widget.Material3.Button.OutlinedButton"
+                            android:layout_width="wrap_content"
+                            android:layout_height="36dp"
+                            android:layout_marginTop="8dp"
+                            android:text="Újrapróbálkozás"
+                            android:textColor="#F87171"
+                            android:textSize="11sp"
+                            app:strokeColor="#F87171" />
+
                     </LinearLayout>
+
+                    <!-- Events List Container -->
+                    <LinearLayout
+                        android:id="@+id/layoutEventCards"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:orientation="vertical"
+                        android:visibility="gone" />
 
                 </LinearLayout>
 
