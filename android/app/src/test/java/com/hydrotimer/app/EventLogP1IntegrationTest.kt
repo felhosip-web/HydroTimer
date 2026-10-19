@@ -12,8 +12,40 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
+import org.robolectric.annotation.Implementation
+import org.robolectric.annotation.Implements
+
+@Implements(NotificationHelper::class)
+class ShadowNotificationHelper {
+    companion object {
+        @Implementation
+        @JvmStatic
+        fun showWaterReminder(
+            context: android.content.Context,
+            customTitle: String? = null,
+            customBody: String? = null,
+            timerGeneration: Long? = null,
+            alertId: Long? = null
+        ) {
+            // Shadow no-op to isolate notification presentation from event log integration testing
+        }
+
+        @Implementation
+        @JvmStatic
+        fun showMissedAlertNotification(context: android.content.Context, alertDurationSeconds: Int) {
+            // Shadow no-op
+        }
+
+        @Implementation
+        @JvmStatic
+        fun cancelAlertNotifications(context: android.content.Context) {
+            // Shadow no-op
+        }
+    }
+}
+
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [33], manifest = "src/main/AndroidManifest.xml")
+@Config(sdk = [33], shadows = [ShadowNotificationHelper::class])
 class EventLogP1IntegrationTest {
 
     private lateinit var dbHelper: HydrationEventDatabaseHelper
@@ -24,8 +56,7 @@ class EventLogP1IntegrationTest {
 
     @Before
     fun setUp() {
-        val appCtx = ApplicationProvider.getApplicationContext<android.content.Context>()
-        val context = androidx.appcompat.view.ContextThemeWrapper(appCtx, R.style.Theme_HydroTimer)
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         dbHelper = HydrationEventDatabaseHelper(context)
         repository = HydrationEventRepository(dbHelper)
         repository.clearAll()
