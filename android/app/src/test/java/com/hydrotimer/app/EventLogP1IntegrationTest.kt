@@ -13,7 +13,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [33])
+@Config(sdk = [33], packageName = "com.hydrotimer.app")
 class EventLogP1IntegrationTest {
 
     private lateinit var dbHelper: HydrationEventDatabaseHelper
