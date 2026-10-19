@@ -168,7 +168,7 @@ class TimerManager(
                 is TimerEffect.ScheduleAlertTimeout -> scheduleAlertTimeoutAt(effect.deadlineAtMillis, effect.timerGeneration, effect.alertId)
                 is TimerEffect.CancelTimer -> cancelAlarm(effect.timerGeneration)
                 is TimerEffect.CancelAlertTimeout -> cancelAlertTimeout(effect.timerGeneration, effect.alertId)
-                is TimerEffect.ShowReminder -> NotificationHelper.showWaterReminder(context, effect.title, effect.body, effect.timerGeneration, effect.alertId)
+                is TimerEffect.ShowReminder -> NotificationHelper.showWaterReminder(context, effect.title ?: getCurrentEventTitle(), effect.body ?: "Igyál egy pohár vizet!", effect.timerGeneration, effect.alertId)
                 is TimerEffect.CancelReminder -> NotificationHelper.cancelAlertNotifications(context)
                 is TimerEffect.ShowMissedNotification -> NotificationHelper.showMissedAlertNotification(context, effect.alertDurationSeconds)
                 is TimerEffect.RecordDrink -> addDrunkMl(effect.amountMl)

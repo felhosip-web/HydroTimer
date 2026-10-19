@@ -13,7 +13,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [33], packageName = "com.hydrotimer.app")
+@Config(sdk = [33], manifest = "src/main/AndroidManifest.xml")
 class EventLogP1IntegrationTest {
 
     private lateinit var dbHelper: HydrationEventDatabaseHelper
@@ -24,7 +24,8 @@ class EventLogP1IntegrationTest {
 
     @Before
     fun setUp() {
-        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val appCtx = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val context = androidx.appcompat.view.ContextThemeWrapper(appCtx, R.style.Theme_HydroTimer)
         dbHelper = HydrationEventDatabaseHelper(context)
         repository = HydrationEventRepository(dbHelper)
         repository.clearAll()

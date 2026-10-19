@@ -157,7 +157,7 @@ object TimerDomainEngine {
         val effects = mutableListOf<TimerEffect>(
             TimerEffect.PersistState(newSnapshot),
             TimerEffect.CreateHydrationEvent(timerGeneration = snapshot.timerGeneration, alertId = nextAlertId, scheduledAt = scheduledAt),
-            TimerEffect.ShowReminder(title = "Vízivás", body = "Igyál egy pohár vizet!", timerGeneration = snapshot.timerGeneration, alertId = nextAlertId),
+            TimerEffect.ShowReminder(title = null, body = null, timerGeneration = snapshot.timerGeneration, alertId = nextAlertId),
             TimerEffect.ScheduleAlertTimeout(deadlineAtMillis = alertDeadlineAt, timerGeneration = snapshot.timerGeneration, alertId = nextAlertId)
         )
 
@@ -393,7 +393,7 @@ object TimerDomainEngine {
 
             val effects = listOf(
                 TimerEffect.PersistState(newSnapshot),
-                TimerEffect.ShowReminder(title = "Vízivás", body = "Igyál egy pohár vizet!", timerGeneration = nextGen, alertId = nextAlertId),
+                TimerEffect.ShowReminder(title = null, body = null, timerGeneration = nextGen, alertId = nextAlertId),
                 TimerEffect.ScheduleAlertTimeout(deadlineAtMillis = alertDeadlineAt, timerGeneration = nextGen, alertId = nextAlertId),
                 TimerEffect.ScheduleTimer(triggerAtMillis = nextTriggerAt, timerGeneration = nextGen)
             )
@@ -412,7 +412,7 @@ object TimerDomainEngine {
 
             val effects = listOf(
                 TimerEffect.PersistState(newSnapshot),
-                TimerEffect.ShowReminder(title = "Vízivás", body = "Igyál egy pohár vizet!", timerGeneration = snapshot.timerGeneration, alertId = nextAlertId),
+                TimerEffect.ShowReminder(title = null, body = null, timerGeneration = snapshot.timerGeneration, alertId = nextAlertId),
                 TimerEffect.ScheduleAlertTimeout(deadlineAtMillis = alertDeadlineAt, timerGeneration = snapshot.timerGeneration, alertId = nextAlertId)
             )
 
@@ -488,7 +488,7 @@ object TimerDomainEngine {
                             )
                         )
                     }
-                    effects.add(TimerEffect.ShowReminder(title = "Vízivás", body = "Igyál egy pohár vizet!", timerGeneration = snapshot.timerGeneration, alertId = activeAlertId))
+                    effects.add(TimerEffect.ShowReminder(title = null, body = null, timerGeneration = snapshot.timerGeneration, alertId = activeAlertId))
                     effects.add(TimerEffect.ScheduleAlertTimeout(deadlineAtMillis = deadlineAt, timerGeneration = snapshot.timerGeneration, alertId = activeAlertId))
                     if (snapshot.nextTriggerAt != null) {
                         effects.add(TimerEffect.ScheduleTimer(snapshot.nextTriggerAt, snapshot.timerGeneration))
