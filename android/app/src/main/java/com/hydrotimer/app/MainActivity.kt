@@ -35,6 +35,8 @@ class MainActivity : AppCompatActivity() {
     private var activeEventsQueryToken: Long = 0L
     private var currentSubTab: String = "stats"
 
+    var queryExecutor: java.util.concurrent.ExecutorService = java.util.concurrent.Executors.newSingleThreadExecutor()
+
     private val prefChangeListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
         if (key == TimerManager.KEY_STATE ||
             key == TimerManager.KEY_TIMER_GENERATION ||
@@ -272,7 +274,7 @@ class MainActivity : AppCompatActivity() {
         val token = ++activeEventsQueryToken
         val queryDate = selectedEventDate
 
-        Thread {
+        queryExecutor.execute {
             try {
                 val list = eventRepository.listByLocalDay(queryDate)
                 val events = list.sortedByDescending { it.scheduledAt }
@@ -301,7 +303,7 @@ class MainActivity : AppCompatActivity() {
                     binding.tvEventsErrorMessage.text = "Nem sikerült az események betöltése."
                 }
             }
-        }.start()
+        }
     }
 
     private fun renderEventCardView(event: HydrationEvent): View {
@@ -773,5 +775,6 @@ class MainActivity : AppCompatActivity() {
         super.onDestroy()
         uiCountDownTimer?.cancel()
         timerManager.getPrefs().unregisterOnSharedPreferenceChangeListener(prefChangeListener)
+        queryExecutor.shutdown()
     }
 }

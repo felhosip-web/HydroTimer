@@ -16,6 +16,8 @@ import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowLooper
 import java.time.LocalDate
 import java.time.ZoneId
+import java.util.concurrent.AbstractExecutorService
+import java.util.concurrent.TimeUnit
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [33], shadows = [ShadowNotificationHelper::class])
@@ -24,6 +26,17 @@ class EventLogP2Test {
     private lateinit var context: Context
     private lateinit var dbHelper: HydrationEventDatabaseHelper
     private lateinit var repository: HydrationEventRepository
+
+    private val directExecutor = object : AbstractExecutorService() {
+        override fun shutdown() {}
+        override fun shutdownNow(): List<Runnable> = emptyList()
+        override fun isShutdown(): Boolean = false
+        override fun isTerminated(): Boolean = false
+        override fun awaitTermination(timeout: Long, unit: TimeUnit): Boolean = true
+        override fun execute(command: Runnable) {
+            command.run()
+        }
+    }
 
     @Before
     fun setUp() {
@@ -43,10 +56,17 @@ class EventLogP2Test {
         }
     }
 
+    private fun createSetupActivity(): MainActivity {
+        val controller = Robolectric.buildActivity(MainActivity::class.java)
+        val activity = controller.get()
+        activity.queryExecutor = directExecutor
+        controller.setup()
+        return activity
+    }
+
     @Test
     fun testMainActivitySubtabToggleBetweenStatsAndEvents() {
-        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
-        val activity = controller.get()
+        val activity = createSetupActivity()
 
         val layoutStats = activity.findViewById<View>(R.id.layoutStatsContent)
         val layoutEvents = activity.findViewById<View>(R.id.layoutEventsContent)
@@ -67,14 +87,11 @@ class EventLogP2Test {
 
         assertEquals(View.VISIBLE, layoutStats.visibility)
         assertEquals(View.GONE, layoutEvents.visibility)
-
-        controller.destroy()
     }
 
     @Test
     fun testDateNavigationAndFutureDateBlockingInMainActivity() {
-        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
-        val activity = controller.get()
+        val activity = createSetupActivity()
 
         val btnTabEvents = activity.findViewById<MaterialButton>(R.id.btnTabEvents)
         btnTabEvents.performClick()
@@ -98,26 +115,19 @@ class EventLogP2Test {
 
         assertTrue(tvDate.text.contains("(Ma)"))
         assertFalse(btnNext.isEnabled)
-
-        controller.destroy()
     }
 
     @Test
     fun testEmptyStateDisplayedWhenNoEventsOnSelectedDate() {
-        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
-        val activity = controller.get()
+        val activity = createSetupActivity()
 
         val btnTabEvents = activity.findViewById<MaterialButton>(R.id.btnTabEvents)
         btnTabEvents.performClick()
-
-        Thread.sleep(50)
         ShadowLooper.runUiThreadTasksIncludingDelayedTasks()
 
         val tvEmpty = activity.findViewById<TextView>(R.id.tvEventsEmpty)
         assertEquals(View.VISIBLE, tvEmpty.visibility)
         assertEquals("Erre a napra nincs rögzített esemény.", tvEmpty.text.toString())
-
-        controller.destroy()
     }
 
     @Test
@@ -140,13 +150,10 @@ class EventLogP2Test {
         repository.updateStatus("1_1003", HydrationEventStatus.NOT_DRANK)
         repository.updateStatus("1_1004", HydrationEventStatus.REJECTED)
 
-        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
-        val activity = controller.get()
+        val activity = createSetupActivity()
 
         val btnTabEvents = activity.findViewById<MaterialButton>(R.id.btnTabEvents)
         btnTabEvents.performClick()
-
-        Thread.sleep(50)
         ShadowLooper.runUiThreadTasksIncludingDelayedTasks()
 
         val layoutCards = activity.findViewById<android.widget.LinearLayout>(R.id.layoutEventCards)
@@ -165,8 +172,6 @@ class EventLogP2Test {
 
         val tvStatus3 = layoutCards.getChildAt(3).findViewById<TextView>(R.id.tvEventStatus)
         assertEquals("Függőben", tvStatus3.text.toString())
-
-        controller.destroy()
     }
 
     @Test
@@ -177,13 +182,13 @@ class EventLogP2Test {
 
         repository.createIfAbsent(HydrationEvent.createPending(1L, 1001L, startOfDay + 100000L))
 
-        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        val controller = Robolectric.buildActivity(MainActivity::class.java)
         val activity = controller.get()
+        activity.queryExecutor = directExecutor
+        controller.setup()
 
         val btnTabEvents = activity.findViewById<MaterialButton>(R.id.btnTabEvents)
         btnTabEvents.performClick()
-
-        Thread.sleep(50)
         ShadowLooper.runUiThreadTasksIncludingDelayedTasks()
 
         val layoutCards = activity.findViewById<android.widget.LinearLayout>(R.id.layoutEventCards)
@@ -192,7 +197,6 @@ class EventLogP2Test {
         repository.createIfAbsent(HydrationEvent.createPending(1L, 1002L, startOfDay + 200000L))
 
         controller.resume()
-        Thread.sleep(50)
         ShadowLooper.runUiThreadTasksIncludingDelayedTasks()
 
         assertEquals(2, layoutCards.childCount)
