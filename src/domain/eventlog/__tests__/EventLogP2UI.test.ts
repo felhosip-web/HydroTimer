@@ -21,6 +21,11 @@ import { HydrationEventRepository } from '../HydrationEventRepository';
 import { createPendingHydrationEvent, HydrationEvent } from '../types';
 import { EventLogView } from '../../../components/EventLogView';
 
+const flushPromises = async () => {
+  await new Promise<void>((r) => queueMicrotask(() => r()));
+  await new Promise<void>((r) => queueMicrotask(() => r()));
+};
+
 describe('Event Log P2 Web UI Component Tests (EventLogView)', () => {
   let dbName: string;
   let repo: HydrationEventRepository;
@@ -73,7 +78,7 @@ describe('Event Log P2 Web UI Component Tests (EventLogView)', () => {
     });
 
     await act(async () => {
-      await new Promise((r) => setTimeout(r, 50));
+      await flushPromises();
     });
 
     const cardElements = container.querySelectorAll('.space-y-2 > div');
@@ -99,7 +104,7 @@ describe('Event Log P2 Web UI Component Tests (EventLogView)', () => {
     });
 
     await act(async () => {
-      await new Promise((r) => setTimeout(r, 50));
+      await flushPromises();
     });
 
     expect(datesQueried.length).toBe(1);
@@ -112,7 +117,7 @@ describe('Event Log P2 Web UI Component Tests (EventLogView)', () => {
     });
 
     await act(async () => {
-      await new Promise((r) => setTimeout(r, 50));
+      await flushPromises();
     });
 
     expect(datesQueried.length).toBe(2);
@@ -127,7 +132,7 @@ describe('Event Log P2 Web UI Component Tests (EventLogView)', () => {
     });
 
     await act(async () => {
-      await new Promise((r) => setTimeout(r, 50));
+      await flushPromises();
     });
 
     expect(datesQueried.length).toBe(3);
@@ -151,7 +156,7 @@ describe('Event Log P2 Web UI Component Tests (EventLogView)', () => {
     });
 
     await act(async () => {
-      await new Promise((r) => setTimeout(r, 50));
+      await flushPromises();
     });
 
     expect(container.textContent).toContain('Nem sikerült az események betöltése.');
@@ -164,7 +169,7 @@ describe('Event Log P2 Web UI Component Tests (EventLogView)', () => {
     });
 
     await act(async () => {
-      await new Promise((r) => setTimeout(r, 50));
+      await flushPromises();
     });
 
     expect(callCount).toBe(2);
@@ -185,7 +190,7 @@ describe('Event Log P2 Web UI Component Tests (EventLogView)', () => {
     });
 
     await act(async () => {
-      await new Promise((r) => setTimeout(r, 50));
+      await flushPromises();
     });
 
     const initial = queryCount;
@@ -201,7 +206,7 @@ describe('Event Log P2 Web UI Component Tests (EventLogView)', () => {
     });
 
     await act(async () => {
-      await new Promise((r) => setTimeout(r, 50));
+      await flushPromises();
     });
 
     expect(queryCount).toBeGreaterThan(initial);
@@ -242,7 +247,7 @@ describe('Event Log P2 Web UI Component Tests (EventLogView)', () => {
     });
 
     await act(async () => {
-      await new Promise((r) => setTimeout(r, 50));
+      await flushPromises();
     });
 
     expect(container.textContent).toContain('16:00');
@@ -252,7 +257,7 @@ describe('Event Log P2 Web UI Component Tests (EventLogView)', () => {
     });
 
     await act(async () => {
-      await new Promise((r) => setTimeout(r, 50));
+      await flushPromises();
     });
 
     expect(container.textContent).toContain('16:00');
@@ -271,7 +276,7 @@ describe('Event Log P2 Web UI Component Tests (EventLogView)', () => {
     });
 
     await act(async () => {
-      await new Promise((r) => setTimeout(r, 50));
+      await flushPromises();
     });
 
     const after = await repo.getById('1_1001');
