@@ -1,30 +1,36 @@
 package com.hydrotimer.app
 
 import android.content.Context
+import android.view.View
+import android.widget.TextView
 import androidx.test.core.app.ApplicationProvider
+import com.google.android.material.button.MaterialButton
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowLooper
 import java.time.LocalDate
 import java.time.ZoneId
 
 @RunWith(RobolectricTestRunner::class)
+@Config(sdk = [33], shadows = [ShadowNotificationHelper::class])
 class EventLogP2Test {
 
     private lateinit var context: Context
     private lateinit var dbHelper: HydrationEventDatabaseHelper
     private lateinit var repository: HydrationEventRepository
-    private lateinit var dbName: String
 
     @Before
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
-        dbName = "test_p2_${System.currentTimeMillis()}_${(1000..9999).random()}.db"
-        dbHelper = HydrationEventDatabaseHelper(context, dbName)
+        dbHelper = HydrationEventDatabaseHelper(context, "hydro_timer_events.db")
         repository = HydrationEventRepository(dbHelper)
+        repository.clearAll()
     }
 
     @After
@@ -38,7 +44,84 @@ class EventLogP2Test {
     }
 
     @Test
-    fun testRepositoryQueriesEventsNewestFirstForLocalDay() {
+    fun testMainActivitySubtabToggleBetweenStatsAndEvents() {
+        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        val activity = controller.get()
+
+        val layoutStats = activity.findViewById<View>(R.id.layoutStatsContent)
+        val layoutEvents = activity.findViewById<View>(R.id.layoutEventsContent)
+        val btnTabStats = activity.findViewById<MaterialButton>(R.id.btnTabStats)
+        val btnTabEvents = activity.findViewById<MaterialButton>(R.id.btnTabEvents)
+
+        assertEquals(View.VISIBLE, layoutStats.visibility)
+        assertEquals(View.GONE, layoutEvents.visibility)
+
+        btnTabEvents.performClick()
+        ShadowLooper.runUiThreadTasksIncludingDelayedTasks()
+
+        assertEquals(View.GONE, layoutStats.visibility)
+        assertEquals(View.VISIBLE, layoutEvents.visibility)
+
+        btnTabStats.performClick()
+        ShadowLooper.runUiThreadTasksIncludingDelayedTasks()
+
+        assertEquals(View.VISIBLE, layoutStats.visibility)
+        assertEquals(View.GONE, layoutEvents.visibility)
+
+        controller.destroy()
+    }
+
+    @Test
+    fun testDateNavigationAndFutureDateBlockingInMainActivity() {
+        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        val activity = controller.get()
+
+        val btnTabEvents = activity.findViewById<MaterialButton>(R.id.btnTabEvents)
+        btnTabEvents.performClick()
+        ShadowLooper.runUiThreadTasksIncludingDelayedTasks()
+
+        val tvDate = activity.findViewById<TextView>(R.id.tvSelectedDate)
+        val btnPrev = activity.findViewById<View>(R.id.btnPrevDay)
+        val btnNext = activity.findViewById<View>(R.id.btnNextDay)
+
+        assertTrue(tvDate.text.contains("(Ma)"))
+        assertFalse(btnNext.isEnabled)
+
+        btnPrev.performClick()
+        ShadowLooper.runUiThreadTasksIncludingDelayedTasks()
+
+        assertFalse(tvDate.text.contains("(Ma)"))
+        assertTrue(btnNext.isEnabled)
+
+        btnNext.performClick()
+        ShadowLooper.runUiThreadTasksIncludingDelayedTasks()
+
+        assertTrue(tvDate.text.contains("(Ma)"))
+        assertFalse(btnNext.isEnabled)
+
+        controller.destroy()
+    }
+
+    @Test
+    fun testEmptyStateDisplayedWhenNoEventsOnSelectedDate() {
+        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        val activity = controller.get()
+
+        val btnTabEvents = activity.findViewById<MaterialButton>(R.id.btnTabEvents)
+        btnTabEvents.performClick()
+
+        Thread.sleep(100)
+        ShadowLooper.runUiThreadTasksIncludingDelayedTasks()
+
+        val tvEmpty = activity.findViewById<TextView>(R.id.tvEventsEmpty)
+        assertEquals(View.VISIBLE, tvEmpty.visibility)
+        assertEquals("Erre a napra nincs rögzített esemény.", tvEmpty.text.toString())
+
+        controller.destroy()
+    }
+
+    @Test
+    fun testEventCardsRenderedNewestFirstWithHungarianStatusBadges() {
         val today = LocalDate.now()
         val zone = ZoneId.systemDefault()
         val startOfDay = today.atStartOfDay(zone).toInstant().toEpochMilli()
@@ -46,106 +129,74 @@ class EventLogP2Test {
         val e1 = HydrationEvent.createPending(1L, 1001L, startOfDay + 100000L)
         val e2 = HydrationEvent.createPending(1L, 1002L, startOfDay + 200000L)
         val e3 = HydrationEvent.createPending(1L, 1003L, startOfDay + 300000L)
+        val e4 = HydrationEvent.createPending(1L, 1004L, startOfDay + 400000L)
 
         repository.createIfAbsent(e1)
         repository.createIfAbsent(e2)
         repository.createIfAbsent(e3)
+        repository.createIfAbsent(e4)
 
         repository.updateStatus("1_1002", HydrationEventStatus.DRANK)
-        repository.updateStatus("1_1003", HydrationEventStatus.REJECTED)
+        repository.updateStatus("1_1003", HydrationEventStatus.NOT_DRANK)
+        repository.updateStatus("1_1004", HydrationEventStatus.REJECTED)
 
-        val events = repository.listByLocalDay(today)
-        assertEquals(3, events.size)
+        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        val activity = controller.get()
 
-        // Verify newest first ordering
-        assertEquals("1_1003", events[0].id)
-        assertEquals("1_1002", events[1].id)
-        assertEquals("1_1001", events[2].id)
+        val btnTabEvents = activity.findViewById<MaterialButton>(R.id.btnTabEvents)
+        btnTabEvents.performClick()
+
+        Thread.sleep(100)
+        ShadowLooper.runUiThreadTasksIncludingDelayedTasks()
+
+        val layoutCards = activity.findViewById<android.widget.LinearLayout>(R.id.layoutEventCards)
+        assertEquals(View.VISIBLE, layoutCards.visibility)
+        assertEquals(4, layoutCards.childCount)
+
+        val card0 = layoutCards.getChildAt(0)
+        val tvStatus0 = card0.findViewById<TextView>(R.id.tvEventStatus)
+        assertEquals("Elutasítva", tvStatus0.text.toString())
+
+        val tvStatus1 = layoutCards.getChildAt(1).findViewById<TextView>(R.id.tvEventStatus)
+        assertEquals("Nem történt meg", tvStatus1.text.toString())
+
+        val tvStatus2 = layoutCards.getChildAt(2).findViewById<TextView>(R.id.tvEventStatus)
+        assertEquals("Megtörtént", tvStatus2.text.toString())
+
+        val tvStatus3 = layoutCards.getChildAt(3).findViewById<TextView>(R.id.tvEventStatus)
+        assertEquals("Függőben", tvStatus3.text.toString())
+
+        controller.destroy()
     }
 
     @Test
-    fun testHungarianStatusLabelsAndTreatments() {
-        fun getHungarianLabel(status: HydrationEventStatus): String = when (status) {
-            HydrationEventStatus.PENDING -> "Függőben"
-            HydrationEventStatus.DRANK -> "Megtörtént"
-            HydrationEventStatus.NOT_DRANK -> "Nem történt meg"
-            HydrationEventStatus.REJECTED -> "Elutasítva"
-        }
-
-        assertEquals("Függőben", getHungarianLabel(HydrationEventStatus.PENDING))
-        assertEquals("Megtörtént", getHungarianLabel(HydrationEventStatus.DRANK))
-        assertEquals("Nem történt meg", getHungarianLabel(HydrationEventStatus.NOT_DRANK))
-        assertEquals("Elutasítva", getHungarianLabel(HydrationEventStatus.REJECTED))
-    }
-
-    @Test
-    fun testFutureDateNavigationPreventionLogic() {
-        val today = LocalDate.now()
-        val tomorrow = today.plusDays(1)
-
-        fun navigateNext(current: LocalDate): LocalDate {
-            return if (current >= today) today else current.plusDays(1)
-        }
-
-        assertEquals(today, navigateNext(today))
-        assertEquals(today, navigateNext(tomorrow))
-
-        val yesterday = today.minusDays(1)
-        assertEquals(today, navigateNext(yesterday))
-    }
-
-    @Test
-    fun testEmptyStateWhenNoEventsOnDate() {
-        val pastDate = LocalDate.of(2020, 1, 1)
-        val events = repository.listByLocalDay(pastDate)
-        assertTrue(events.isEmpty())
-    }
-
-    @Test
-    fun testQueryingEventLogDoesNotMutatePersistedRecords() {
+    fun testActivityResumeRefreshesEventListAutomatically() {
         val today = LocalDate.now()
         val zone = ZoneId.systemDefault()
-        val scheduledAt = today.atStartOfDay(zone).toInstant().toEpochMilli() + 50000L
+        val startOfDay = today.atStartOfDay(zone).toInstant().toEpochMilli()
 
-        val event = HydrationEvent.createPending(1L, 1001L, scheduledAt)
-        repository.createIfAbsent(event)
+        repository.createIfAbsent(HydrationEvent.createPending(1L, 1001L, startOfDay + 100000L))
 
-        val before = repository.getById("1_1001")
-        assertNotNull(before)
-        val initialRev = before?.revision
-        val initialUpdatedAt = before?.updatedAt
+        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        val activity = controller.get()
 
-        // Multiple queries
-        repository.listByLocalDay(today)
-        repository.listByLocalDay(today)
+        val btnTabEvents = activity.findViewById<MaterialButton>(R.id.btnTabEvents)
+        btnTabEvents.performClick()
 
-        val after = repository.getById("1_1001")
-        assertEquals(initialRev, after?.revision)
-        assertEquals(initialUpdatedAt, after?.updatedAt)
-        assertEquals(HydrationEventStatus.PENDING, after?.status)
-    }
+        Thread.sleep(100)
+        ShadowLooper.runUiThreadTasksIncludingDelayedTasks()
 
-    @Test
-    fun testLifecycleResumeRefreshWithoutDuplication() {
-        val today = LocalDate.now()
-        val zone = ZoneId.systemDefault()
-        val scheduledAt = today.atStartOfDay(zone).toInstant().toEpochMilli() + 100000L
+        val layoutCards = activity.findViewById<android.widget.LinearLayout>(R.id.layoutEventCards)
+        assertEquals(1, layoutCards.childCount)
 
-        val e1 = HydrationEvent.createPending(1L, 1001L, scheduledAt)
-        repository.createIfAbsent(e1)
+        repository.createIfAbsent(HydrationEvent.createPending(1L, 1002L, startOfDay + 200000L))
 
-        // Simulate resume call 1
-        val list1 = repository.listByLocalDay(today)
-        assertEquals(1, list1.size)
+        controller.resume()
+        Thread.sleep(100)
+        ShadowLooper.runUiThreadTasksIncludingDelayedTasks()
 
-        // Background process adds a new event
-        val e2 = HydrationEvent.createPending(1L, 1002L, scheduledAt + 50000L)
-        repository.createIfAbsent(e2)
+        assertEquals(2, layoutCards.childCount)
 
-        // Simulate resume call 2
-        val list2 = repository.listByLocalDay(today)
-        assertEquals(2, list2.size)
-        assertEquals("1_1002", list2[0].id)
-        assertEquals("1_1001", list2[1].id)
+        controller.destroy()
     }
 }

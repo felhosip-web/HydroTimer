@@ -114,9 +114,9 @@ export const EventLogView: React.FC<EventLogViewProps> = ({ repository }) => {
         fetchEventsForDate(selectedDate);
       }
     };
-    window.addEventListener('visibilitychange', handleVisibilityChange);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => {
-      window.removeEventListener('visibilitychange', handleVisibilityChange);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [selectedDate, fetchEventsForDate]);
 
