@@ -110,7 +110,7 @@ class EventLogP2Test {
         val btnTabEvents = activity.findViewById<MaterialButton>(R.id.btnTabEvents)
         btnTabEvents.performClick()
 
-        Thread.sleep(100)
+        Thread.sleep(50)
         ShadowLooper.runUiThreadTasksIncludingDelayedTasks()
 
         val tvEmpty = activity.findViewById<TextView>(R.id.tvEventsEmpty)
@@ -146,7 +146,7 @@ class EventLogP2Test {
         val btnTabEvents = activity.findViewById<MaterialButton>(R.id.btnTabEvents)
         btnTabEvents.performClick()
 
-        Thread.sleep(100)
+        Thread.sleep(50)
         ShadowLooper.runUiThreadTasksIncludingDelayedTasks()
 
         val layoutCards = activity.findViewById<android.widget.LinearLayout>(R.id.layoutEventCards)
@@ -183,7 +183,7 @@ class EventLogP2Test {
         val btnTabEvents = activity.findViewById<MaterialButton>(R.id.btnTabEvents)
         btnTabEvents.performClick()
 
-        Thread.sleep(100)
+        Thread.sleep(50)
         ShadowLooper.runUiThreadTasksIncludingDelayedTasks()
 
         val layoutCards = activity.findViewById<android.widget.LinearLayout>(R.id.layoutEventCards)
@@ -192,7 +192,7 @@ class EventLogP2Test {
         repository.createIfAbsent(HydrationEvent.createPending(1L, 1002L, startOfDay + 200000L))
 
         controller.resume()
-        Thread.sleep(100)
+        Thread.sleep(50)
         ShadowLooper.runUiThreadTasksIncludingDelayedTasks()
 
         assertEquals(2, layoutCards.childCount)

@@ -256,7 +256,7 @@ export const DailyStats: React.FC<DailyStatsProps> = ({
       </div>
 
       {subTab === 'events' ? (
-        <EventLogView repository={eventRepository} />
+        <EventLogView repository={eventRepository!} />
       ) : (
         <>
           {/* Daily Quick Summary Grid */}

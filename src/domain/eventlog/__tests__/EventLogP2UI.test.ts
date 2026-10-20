@@ -1,25 +1,47 @@
 import { indexedDB, IDBKeyRange } from 'fake-indexeddb';
 import Dexie from 'dexie';
+import { Window } from 'happy-dom';
+import React, { act } from 'react';
+import { createRoot, Root } from 'react-dom/client';
 
 Dexie.dependencies.indexedDB = indexedDB;
 Dexie.dependencies.IDBKeyRange = IDBKeyRange;
+
+const domWindow = new Window();
+globalThis.window = domWindow as any;
+globalThis.document = domWindow.document as any;
+globalThis.navigator = domWindow.navigator as any;
+globalThis.HTMLElement = domWindow.HTMLElement as any;
+globalThis.Event = domWindow.Event as any;
+(globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
 
 // @ts-ignore
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { HydrationEventRepository } from '../HydrationEventRepository';
 import { createPendingHydrationEvent, HydrationEvent } from '../types';
-import { STATUS_CONFIG } from '../../../components/EventLogView';
+import { EventLogView } from '../../../components/EventLogView';
 
 describe('Event Log P2 Web UI Component Tests (EventLogView)', () => {
   let dbName: string;
   let repo: HydrationEventRepository;
+  let container: HTMLDivElement;
+  let root: Root;
 
   beforeEach(() => {
     dbName = `test_p2_ui_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
     repo = new HydrationEventRepository(dbName);
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
   });
 
   afterEach(async () => {
+    await act(async () => {
+      root.unmount();
+    });
+    if (container.parentNode) {
+      container.parentNode.removeChild(container);
+    }
     try {
       await repo.clear();
       repo.close();
@@ -28,7 +50,7 @@ describe('Event Log P2 Web UI Component Tests (EventLogView)', () => {
     }
   });
 
-  it('1. Renders event cards ordered newest first by scheduledAt with correct Hungarian status labels', async () => {
+  it('1. Renders event cards ordered newest first directly in DOM with correct Hungarian status labels', async () => {
     const today = new Date();
     const baseTime = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 9, 0, 0, 0).getTime();
 
@@ -46,155 +68,215 @@ describe('Event Log P2 Web UI Component Tests (EventLogView)', () => {
     await repo.updateStatus('1_1003', 'NOT_DRANK', baseTime + 7205000);
     await repo.updateStatus('1_1004', 'REJECTED', baseTime + 10805000);
 
-    const events = await repo.listByLocalDay(today);
-    const sorted = [...events].sort((a, b) => b.scheduledAt - a.scheduledAt);
+    await act(async () => {
+      root.render(React.createElement(EventLogView, { repository: repo }));
+    });
 
-    expect(sorted.length).toBe(4);
-    expect(sorted[0].id).toBe('1_1004');
-    expect(sorted[1].id).toBe('1_1003');
-    expect(sorted[2].id).toBe('1_1002');
-    expect(sorted[3].id).toBe('1_1001');
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
 
-    expect(STATUS_CONFIG[sorted[0].status].label).toBe('Elutasítva');
-    expect(STATUS_CONFIG[sorted[1].status].label).toBe('Nem történt meg');
-    expect(STATUS_CONFIG[sorted[2].status].label).toBe('Megtörtént');
-    expect(STATUS_CONFIG[sorted[3].status].label).toBe('Függőben');
+    const cardElements = container.querySelectorAll('.space-y-2 > div');
+    expect(cardElements.length).toBe(4);
+
+    expect(cardElements[0].textContent).toContain('Elutasítva');
+    expect(cardElements[1].textContent).toContain('Nem történt meg');
+    expect(cardElements[2].textContent).toContain('Megtörtént');
+    expect(cardElements[3].textContent).toContain('Függőben');
   });
 
-  it('2. Empty state requirements: date with no events returns empty list', async () => {
-    const pastDate = new Date(2020, 0, 1);
-    const events = await repo.listByLocalDay(pastDate);
-    expect(events.length).toBe(0);
+  it('2. Exercising prev/next day buttons in DOM asserts dates passed to listByLocalDay and blocks future dates', async () => {
+    const datesQueried: Date[] = [];
+    const stubRepo = {
+      listByLocalDay: async (d: Date) => {
+        datesQueried.push(new Date(d));
+        return [];
+      },
+    } as any;
+
+    await act(async () => {
+      root.render(React.createElement(EventLogView, { repository: stubRepo }));
+    });
+
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    expect(datesQueried.length).toBe(1);
+
+    const prevBtn = container.querySelector('#btn-prev-day') as HTMLButtonElement;
+    expect(prevBtn).not.toBeNull();
+
+    await act(async () => {
+      prevBtn.click();
+    });
+
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    expect(datesQueried.length).toBe(2);
+    const dayDiffMs = datesQueried[0].getTime() - datesQueried[1].getTime();
+    expect(Math.round(dayDiffMs / (1000 * 3600 * 24))).toBe(1);
+
+    const nextBtn = container.querySelector('#btn-next-day') as HTMLButtonElement;
+    expect(nextBtn.disabled).toBe(false);
+
+    await act(async () => {
+      nextBtn.click();
+    });
+
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    expect(datesQueried.length).toBe(3);
+    expect(nextBtn.disabled).toBe(true);
   });
 
-  it('3. Date navigation loads correct event set for selected date', async () => {
-    const today = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(today.getDate() - 1);
-
-    const todayTime = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 12, 0, 0).getTime();
-    const yesterdayTime = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate(), 12, 0, 0).getTime();
-
-    await repo.createIfAbsent(createPendingHydrationEvent({ timerGeneration: 1, alertId: 100, scheduledAt: todayTime }));
-    await repo.createIfAbsent(createPendingHydrationEvent({ timerGeneration: 1, alertId: 200, scheduledAt: yesterdayTime }));
-
-    const todayEvents = await repo.listByLocalDay(today);
-    const yesterdayEvents = await repo.listByLocalDay(yesterday);
-
-    expect(todayEvents.length).toBe(1);
-    expect(todayEvents[0].id).toBe('1_100');
-
-    expect(yesterdayEvents.length).toBe(1);
-    expect(yesterdayEvents[0].id).toBe('1_200');
-  });
-
-  it('4. Error handling and retry logic: failed repository query throws and retry re-executes query', async () => {
-    let attempts = 0;
+  it('3. Renders empty and error states in DOM and retry button re-invokes listByLocalDay', async () => {
+    let callCount = 0;
     const failingRepo = {
       listByLocalDay: async () => {
-        attempts++;
-        if (attempts === 1) {
+        callCount++;
+        if (callCount === 1) {
           throw new Error('Database query failure');
         }
-        return [createPendingHydrationEvent({ timerGeneration: 1, alertId: 1, scheduledAt: Date.now() })];
+        return [];
       },
-    };
+    } as any;
 
-    let caughtError: any = null;
-    try {
-      await failingRepo.listByLocalDay();
-    } catch (err) {
-      caughtError = err;
-    }
-    expect(caughtError).not.toBeNull();
-    expect(caughtError.message).toBe('Database query failure');
+    await act(async () => {
+      root.render(React.createElement(EventLogView, { repository: failingRepo }));
+    });
 
-    const retryResult = await failingRepo.listByLocalDay();
-    expect(retryResult.length).toBe(1);
-    expect(attempts).toBe(2);
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    expect(container.textContent).toContain('Nem sikerült az események betöltése.');
+
+    const retryBtn = container.querySelector('#btn-retry-events') as HTMLButtonElement;
+    expect(retryBtn).not.toBeNull();
+
+    await act(async () => {
+      retryBtn.click();
+    });
+
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    expect(callCount).toBe(2);
+    expect(container.textContent).toContain('Erre a napra nincs rögzített esemény.');
   });
 
-  it('5. Foreground refresh listener registration on document', () => {
-    const listeners: Record<string, Function[]> = {};
-
-    const mockDocument = {
-      visibilityState: 'visible',
-      addEventListener: (event: string, handler: Function) => {
-        listeners[event] = listeners[event] || [];
-        listeners[event].push(handler);
+  it('4. Document visibilitychange event triggers fresh repository query in EventLogView', async () => {
+    let queryCount = 0;
+    const trackingRepo = {
+      listByLocalDay: async () => {
+        queryCount++;
+        return [];
       },
-      removeEventListener: (event: string, handler: Function) => {
-        if (listeners[event]) {
-          listeners[event] = listeners[event].filter((h) => h !== handler);
-        }
-      },
-      dispatchEvent: (event: string) => {
-        if (listeners[event]) {
-          listeners[event].forEach((fn) => fn());
-        }
-      },
-    };
+    } as any;
 
-    let refreshCalled = false;
-    const onVisibilityChange = () => {
-      if (mockDocument.visibilityState === 'visible') {
-        refreshCalled = true;
-      }
-    };
+    await act(async () => {
+      root.render(React.createElement(EventLogView, { repository: trackingRepo }));
+    });
 
-    mockDocument.addEventListener('visibilitychange', onVisibilityChange);
-    expect(listeners['visibilitychange']?.length).toBe(1);
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
 
-    mockDocument.dispatchEvent('visibilitychange');
-    expect(refreshCalled).toBe(true);
+    const initial = queryCount;
+    expect(initial).toBeGreaterThanOrEqual(1);
 
-    mockDocument.removeEventListener('visibilitychange', onVisibilityChange);
-    expect(listeners['visibilitychange']?.length).toBe(0);
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      value: 'visible',
+    });
+
+    await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    expect(queryCount).toBeGreaterThan(initial);
   });
 
-  it('6. Stale asynchronous query race condition protection', async () => {
-    let activeToken = 0;
-    let displayedEvents: HydrationEvent[] = [];
+  it('5. Overlapping async queries resolved in reverse order do not overwrite currently selected date in DOM', async () => {
+    let callIndex = 0;
+    const pendingResolves: Array<(val: HydrationEvent[]) => void> = [];
 
-    async function mockQueryWithToken(_dateLabel: string, delayMs: number, resultEvents: HydrationEvent[]) {
-      const currentToken = ++activeToken;
-      await new Promise((resolve) => setTimeout(resolve, delayMs));
-      if (currentToken === activeToken) {
-        displayedEvents = resultEvents;
-      }
-    }
+    const raceRepo = {
+      listByLocalDay: async () => {
+        callIndex++;
+        const idx = callIndex;
+        return new Promise<HydrationEvent[]>((resolve) => {
+          pendingResolves[idx] = resolve;
+        });
+      },
+    } as any;
 
-    const eToday = [createPendingHydrationEvent({ timerGeneration: 1, alertId: 100, scheduledAt: Date.now() })];
-    const eYesterday = [createPendingHydrationEvent({ timerGeneration: 1, alertId: 200, scheduledAt: Date.now() - 86400000 })];
+    await act(async () => {
+      root.render(React.createElement(EventLogView, { repository: raceRepo }));
+    });
 
-    const p1 = mockQueryWithToken('yesterday', 50, eYesterday);
-    const p2 = mockQueryWithToken('today', 10, eToday);
+    const prevBtn = container.querySelector('#btn-prev-day') as HTMLButtonElement;
+    await act(async () => {
+      prevBtn.click();
+    });
 
-    await Promise.all([p1, p2]);
+    const yesterdayTime = new Date();
+    yesterdayTime.setDate(yesterdayTime.getDate() - 1);
+    yesterdayTime.setHours(16, 0, 0, 0);
 
-    expect(displayedEvents[0].id).toBe('1_100');
+    const todayTime = new Date();
+    todayTime.setHours(8, 0, 0, 0);
+
+    await act(async () => {
+      pendingResolves[2]([createPendingHydrationEvent({ timerGeneration: 1, alertId: 222, scheduledAt: yesterdayTime.getTime() })]);
+    });
+
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    expect(container.textContent).toContain('16:00');
+
+    await act(async () => {
+      pendingResolves[1]([createPendingHydrationEvent({ timerGeneration: 1, alertId: 111, scheduledAt: todayTime.getTime() })]);
+    });
+
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    expect(container.textContent).toContain('16:00');
+    expect(container.textContent).not.toContain('08:00');
   });
 
-  it('7. Querying Event Log does not write or mutate persisted records', async () => {
+  it('6. Rendering EventLogView does not write or mutate persisted records in IndexedDB', async () => {
     const today = new Date();
     const event = createPendingHydrationEvent({ timerGeneration: 1, alertId: 1001, scheduledAt: Date.now() });
     await repo.createIfAbsent(event);
 
     const initial = await repo.getById('1_1001');
 
-    await repo.listByLocalDay(today);
-    await repo.listByLocalDay(today);
+    await act(async () => {
+      root.render(React.createElement(EventLogView, { repository: repo }));
+    });
+
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
 
     const after = await repo.getById('1_1001');
     expect(after?.revision).toBe(initial?.revision);
     expect(after?.updatedAt).toBe(initial?.updatedAt);
     expect(after?.status).toBe('PENDING');
-  });
-
-  it('8. Status configuration maps all four statuses correctly', () => {
-    expect(STATUS_CONFIG.PENDING.label).toBe('Függőben');
-    expect(STATUS_CONFIG.DRANK.label).toBe('Megtörtént');
-    expect(STATUS_CONFIG.NOT_DRANK.label).toBe('Nem történt meg');
-    expect(STATUS_CONFIG.REJECTED.label).toBe('Elutasítva');
   });
 });

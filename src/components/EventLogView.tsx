@@ -4,7 +4,7 @@ import { HydrationEvent, HydrationEventStatus } from '../domain/eventlog/types';
 import { HydrationEventRepository } from '../domain/eventlog/HydrationEventRepository';
 
 interface EventLogViewProps {
-  repository?: HydrationEventRepository;
+  repository: HydrationEventRepository;
 }
 
 export const STATUS_CONFIG: Record<
@@ -69,11 +69,6 @@ export const EventLogView: React.FC<EventLogViewProps> = ({ repository }) => {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  const repoRef = useRef<HydrationEventRepository | null>(null);
-  if (!repoRef.current) {
-    repoRef.current = repository ?? new HydrationEventRepository();
-  }
-
   const activeQueryTokenRef = useRef<number>(0);
 
   const fetchEventsForDate = useCallback(
@@ -83,8 +78,7 @@ export const EventLogView: React.FC<EventLogViewProps> = ({ repository }) => {
       const currentToken = ++activeQueryTokenRef.current;
 
       try {
-        const repo = repository ?? repoRef.current!;
-        const list = await repo.listByLocalDay(targetDate);
+        const list = await repository.listByLocalDay(targetDate);
 
         if (currentToken !== activeQueryTokenRef.current) {
           return;

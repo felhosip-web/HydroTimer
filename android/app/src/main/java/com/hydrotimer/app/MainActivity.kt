@@ -76,6 +76,7 @@ class MainActivity : AppCompatActivity() {
         timerManager.dispatch(TimerEvent(TimerEventType.RECOVER, timestamp = System.currentTimeMillis()))
         updateUIState()
         checkMissedAlertBanner()
+        updateDateHeaderUI()
         if (currentSubTab == "events") {
             loadEventsForSelectedDate()
         }
@@ -269,10 +270,11 @@ class MainActivity : AppCompatActivity() {
         binding.layoutEventCards.visibility = View.GONE
 
         val token = ++activeEventsQueryToken
+        val queryDate = selectedEventDate
 
         Thread {
             try {
-                val list = eventRepository.listByLocalDay(selectedEventDate)
+                val list = eventRepository.listByLocalDay(queryDate)
                 val events = list.sortedByDescending { it.scheduledAt }
 
                 runOnUiThread {

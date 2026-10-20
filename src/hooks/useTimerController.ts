@@ -257,6 +257,7 @@ export function useTimerController({
     alertSecondsLeft,
     totalDuration,
     missedAlertNotice,
+    eventRepository: eventRepoRef.current!,
     dispatch,
     startTimer,
     stopTimer,
