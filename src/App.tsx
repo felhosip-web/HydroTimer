@@ -228,14 +228,17 @@ export default function App() {
     setLogs((prev) => [missedLog, ...prev]);
   }, [config.presetId, config.title, config.mode]);
 
-  const handleShowReminder = useCallback(() => {
+  const handleShowReminder = useCallback((_gen: number, _alertId: number, intakeMl?: number, dailyGoalMl?: number) => {
     const inQuietHours = isCurrentlyInQuietHours();
+    const effectiveIntake = intakeMl ?? config.intakeMlPerAlert;
+    const effectiveGoal = dailyGoalMl ?? config.dailyGoalMl;
+
     if (!inQuietHours) {
       soundHaptics.playAlertSound(config.soundType);
       soundHaptics.triggerVibration(config.vibrationPattern);
       soundHaptics.sendSystemNotification(
         `⏰ ${config.title} Jelzés!`,
-        `Nyugtázási időablak: ${Math.max(5, config.alertDurationSeconds || 15)} másodperc áll rendelkezésre!`
+        `Ideje inni: ${effectiveIntake} ml víz. Napi cél: ${effectiveGoal} ml.`
       );
     }
 

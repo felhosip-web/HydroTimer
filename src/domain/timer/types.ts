@@ -10,6 +10,8 @@ export interface TimerSnapshot {
   alertDeadlineAt: number | null;
   alertScheduledAt?: number | null;
   isTestAlert?: boolean;
+  intakeMl?: number | null;
+  dailyGoalMl?: number | null;
 }
 
 export interface EngineConfig {
@@ -22,6 +24,7 @@ export interface EngineConfig {
   clockIntervalMinutes: number;
   autoRestart: boolean;
   intakePerAlertMl: number;
+  dailyGoalMl: number;
   quietHoursEnabled: boolean;
   quietHoursStart: string; // "23:00"
   quietHoursEnd: string;   // "07:00"
@@ -52,13 +55,13 @@ export type TimerEffect =
   | { type: 'ScheduleAlertTimeout'; deadlineAtMillis: number; timerGeneration: number; alertId: number }
   | { type: 'CancelTimer'; timerGeneration: number }
   | { type: 'CancelAlertTimeout'; timerGeneration: number; alertId: number | null }
-  | { type: 'ShowReminder'; title?: string | null; body?: string | null; timerGeneration: number; alertId: number }
+  | { type: 'ShowReminder'; title?: string | null; body?: string | null; timerGeneration: number; alertId: number; intakeMl?: number; dailyGoalMl?: number }
   | { type: 'CancelReminder' }
   | { type: 'ShowMissedNotification'; alertDurationSeconds: number }
   | { type: 'RecordDrink'; amountMl: number }
   | { type: 'RecordAck' }
   | { type: 'RecordMissed' }
-  | { type: 'CreateHydrationEvent'; timerGeneration: number; alertId: number; scheduledAt: number };
+  | { type: 'CreateHydrationEvent'; timerGeneration: number; alertId: number; scheduledAt: number; intakeMl?: number; dailyGoalMl?: number };
 
 export interface TransitionResult {
   newSnapshot: TimerSnapshot;

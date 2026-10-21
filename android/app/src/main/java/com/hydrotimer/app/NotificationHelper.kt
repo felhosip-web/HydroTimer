@@ -83,7 +83,9 @@ object NotificationHelper {
         customTitle: String? = null,
         customBody: String? = null,
         timerGeneration: Long? = null,
-        alertId: Long? = null
+        alertId: Long? = null,
+        intakeMl: Int? = null,
+        dailyGoalMl: Int? = null
     ) {
         val drinkReqCode = generateRequestCode(30, timerGeneration, alertId)
         val drinkIntent = Intent(context, ReminderReceiver::class.java).apply {
@@ -108,7 +110,11 @@ object NotificationHelper {
         )
 
         val title = customTitle ?: context.getString(R.string.reminder_title)
-        val body = customBody ?: context.getString(R.string.reminder_body)
+        val body = customBody ?: if (intakeMl != null && dailyGoalMl != null) {
+            context.getString(R.string.reminder_body_snapshot, intakeMl, dailyGoalMl)
+        } else {
+            context.getString(R.string.reminder_body)
+        }
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_water_drop)

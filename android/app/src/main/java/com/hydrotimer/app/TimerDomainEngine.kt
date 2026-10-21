@@ -142,6 +142,8 @@ object TimerDomainEngine {
         val nextTriggerAt = if (shouldAutoRestart) calculateNextTriggerAt(now, config) else null
 
         val scheduledAt = event.scheduledAt ?: now
+        val intakeMl = config.intakePerAlertMl
+        val dailyGoalMl = config.dailyGoalMl
 
         val newSnapshot = snapshot.copy(
             state = TimerState.ALERT_ACTIVE,
@@ -151,13 +153,15 @@ object TimerDomainEngine {
             alertDeadlineAt = alertDeadlineAt,
             alertScheduledAt = scheduledAt,
             nextTriggerAt = nextTriggerAt,
-            isTestAlert = false
+            isTestAlert = false,
+            intakeMl = intakeMl,
+            dailyGoalMl = dailyGoalMl
         )
 
         val effects = mutableListOf<TimerEffect>(
             TimerEffect.PersistState(newSnapshot),
-            TimerEffect.CreateHydrationEvent(timerGeneration = snapshot.timerGeneration, alertId = nextAlertId, scheduledAt = scheduledAt),
-            TimerEffect.ShowReminder(title = null, body = null, timerGeneration = snapshot.timerGeneration, alertId = nextAlertId),
+            TimerEffect.CreateHydrationEvent(timerGeneration = snapshot.timerGeneration, alertId = nextAlertId, scheduledAt = scheduledAt, intakeMl = intakeMl, dailyGoalMl = dailyGoalMl),
+            TimerEffect.ShowReminder(title = null, body = null, timerGeneration = snapshot.timerGeneration, alertId = nextAlertId, intakeMl = intakeMl, dailyGoalMl = dailyGoalMl),
             TimerEffect.ScheduleAlertTimeout(deadlineAtMillis = alertDeadlineAt, timerGeneration = snapshot.timerGeneration, alertId = nextAlertId)
         )
 
@@ -376,6 +380,9 @@ object TimerDomainEngine {
         val alertDeadlineAt = now + alertDurationMs
         val nextAlertId = Math.max(1000L, snapshot.lastAlertId) + 1L
 
+        val intakeMl = config.intakePerAlertMl
+        val dailyGoalMl = config.dailyGoalMl
+
         if (snapshot.state == TimerState.STOPPED) {
             val nextGen = snapshot.timerGeneration + 1L
             val nextTriggerAt = calculateNextTriggerAt(now, config)
@@ -388,12 +395,14 @@ object TimerDomainEngine {
                 alertStartedAt = alertStartedAt,
                 alertDeadlineAt = alertDeadlineAt,
                 alertScheduledAt = null,
-                isTestAlert = true
+                isTestAlert = true,
+                intakeMl = intakeMl,
+                dailyGoalMl = dailyGoalMl
             )
 
             val effects = listOf(
                 TimerEffect.PersistState(newSnapshot),
-                TimerEffect.ShowReminder(title = null, body = null, timerGeneration = nextGen, alertId = nextAlertId),
+                TimerEffect.ShowReminder(title = null, body = null, timerGeneration = nextGen, alertId = nextAlertId, intakeMl = intakeMl, dailyGoalMl = dailyGoalMl),
                 TimerEffect.ScheduleAlertTimeout(deadlineAtMillis = alertDeadlineAt, timerGeneration = nextGen, alertId = nextAlertId),
                 TimerEffect.ScheduleTimer(triggerAtMillis = nextTriggerAt, timerGeneration = nextGen)
             )
@@ -407,12 +416,14 @@ object TimerDomainEngine {
                 lastAlertId = nextAlertId,
                 alertStartedAt = alertStartedAt,
                 alertDeadlineAt = alertDeadlineAt,
-                isTestAlert = true
+                isTestAlert = true,
+                intakeMl = intakeMl,
+                dailyGoalMl = dailyGoalMl
             )
 
             val effects = listOf(
                 TimerEffect.PersistState(newSnapshot),
-                TimerEffect.ShowReminder(title = null, body = null, timerGeneration = snapshot.timerGeneration, alertId = nextAlertId),
+                TimerEffect.ShowReminder(title = null, body = null, timerGeneration = snapshot.timerGeneration, alertId = nextAlertId, intakeMl = intakeMl, dailyGoalMl = dailyGoalMl),
                 TimerEffect.ScheduleAlertTimeout(deadlineAtMillis = alertDeadlineAt, timerGeneration = snapshot.timerGeneration, alertId = nextAlertId)
             )
 
@@ -484,11 +495,13 @@ object TimerDomainEngine {
                             TimerEffect.CreateHydrationEvent(
                                 timerGeneration = snapshot.timerGeneration,
                                 alertId = activeAlertId,
-                                scheduledAt = snapshot.alertScheduledAt
+                                scheduledAt = snapshot.alertScheduledAt,
+                                intakeMl = snapshot.intakeMl,
+                                dailyGoalMl = snapshot.dailyGoalMl
                             )
                         )
                     }
-                    effects.add(TimerEffect.ShowReminder(title = null, body = null, timerGeneration = snapshot.timerGeneration, alertId = activeAlertId))
+                    effects.add(TimerEffect.ShowReminder(title = null, body = null, timerGeneration = snapshot.timerGeneration, alertId = activeAlertId, intakeMl = snapshot.intakeMl, dailyGoalMl = snapshot.dailyGoalMl))
                     effects.add(TimerEffect.ScheduleAlertTimeout(deadlineAtMillis = deadlineAt, timerGeneration = snapshot.timerGeneration, alertId = activeAlertId))
                     if (snapshot.nextTriggerAt != null) {
                         effects.add(TimerEffect.ScheduleTimer(snapshot.nextTriggerAt, snapshot.timerGeneration))

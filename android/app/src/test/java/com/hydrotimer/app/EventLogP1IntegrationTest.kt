@@ -25,7 +25,9 @@ class ShadowNotificationHelper {
             customTitle: String? = null,
             customBody: String? = null,
             timerGeneration: Long? = null,
-            alertId: Long? = null
+            alertId: Long? = null,
+            intakeMl: Int? = null,
+            dailyGoalMl: Int? = null
         ) {
             // Shadow no-op to isolate notification presentation from event log integration testing
         }

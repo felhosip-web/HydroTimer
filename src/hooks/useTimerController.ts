@@ -17,7 +17,7 @@ interface UseTimerControllerProps {
   onRecordDrink?: (amountMl: number) => void;
   onRecordAck?: () => void;
   onRecordMissed?: (durationSec: number) => void;
-  onShowReminder?: (timerGeneration: number, alertId: number) => void;
+  onShowReminder?: (timerGeneration: number, alertId: number, intakeMl?: number, dailyGoalMl?: number) => void;
 }
 
 export function useTimerController({
@@ -64,6 +64,7 @@ export function useTimerController({
       clockIntervalMinutes: cfg.clockIntervalMinutes || 30,
       autoRestart: cfg.autoRestart !== false,
       intakePerAlertMl: cfg.intakeMlPerAlert,
+      dailyGoalMl: cfg.dailyGoalMl || 2500,
       quietHoursEnabled: cfg.quietHoursEnabled,
       quietHoursStart: cfg.quietHoursStart,
       quietHoursEnd: cfg.quietHoursEnd,

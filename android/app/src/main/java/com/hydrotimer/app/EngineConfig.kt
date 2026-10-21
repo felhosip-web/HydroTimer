@@ -10,6 +10,7 @@ data class EngineConfig(
     val clockIntervalMinutes: Int = 30,
     val autoRestart: Boolean = true,
     val intakePerAlertMl: Int = 250,
+    val dailyGoalMl: Int = 2500,
     val quietHoursEnabled: Boolean = true,
     val quietHoursStart: String = "23:00",
     val quietHoursEnd: String = "07:00",
@@ -28,6 +29,7 @@ data class EngineConfig(
         if (clockIntervalMinutes != other.clockIntervalMinutes) return false
         if (autoRestart != other.autoRestart) return false
         if (intakePerAlertMl != other.intakePerAlertMl) return false
+        if (dailyGoalMl != other.dailyGoalMl) return false
         if (quietHoursEnabled != other.quietHoursEnabled) return false
         if (quietHoursStart != other.quietHoursStart) return false
         if (quietHoursEnd != other.quietHoursEnd) return false
@@ -45,6 +47,7 @@ data class EngineConfig(
         result = 31 * result + clockIntervalMinutes
         result = 31 * result + autoRestart.hashCode()
         result = 31 * result + intakePerAlertMl
+        result = 31 * result + dailyGoalMl
         result = 31 * result + quietHoursEnabled.hashCode()
         result = 31 * result + quietHoursStart.hashCode()
         result = 31 * result + quietHoursEnd.hashCode()

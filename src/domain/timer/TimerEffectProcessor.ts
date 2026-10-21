@@ -7,7 +7,7 @@ import { createPendingHydrationEvent } from '../eventlog/types';
 export interface TimerEffectProcessorOptions {
   scheduler?: BrowserScheduler | null;
   eventRepository?: HydrationEventRepository | null;
-  onShowReminder?: (timerGeneration: number, alertId: number) => void;
+  onShowReminder?: (timerGeneration: number, alertId: number, intakeMl?: number, dailyGoalMl?: number) => void;
   onRecordDrink?: (amountMl: number) => void;
   onRecordAck?: () => void;
   onRecordMissed?: (durationSec: number) => void;
@@ -34,7 +34,7 @@ export async function processTimerEffects(
         break;
       case 'ShowReminder':
         if (options.onShowReminder) {
-          options.onShowReminder(effect.timerGeneration, effect.alertId);
+          options.onShowReminder(effect.timerGeneration, effect.alertId, effect.intakeMl, effect.dailyGoalMl);
         }
         break;
       case 'RecordDrink':
@@ -72,6 +72,8 @@ export async function processTimerEffects(
             timerGeneration: effect.timerGeneration,
             alertId: effect.alertId,
             scheduledAt: effect.scheduledAt,
+            intakeMl: effect.intakeMl,
+            dailyGoalMl: effect.dailyGoalMl,
           });
           try {
             await options.eventRepository.createIfAbsent(pendingEvent);

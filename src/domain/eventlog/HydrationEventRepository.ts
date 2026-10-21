@@ -20,6 +20,9 @@ export class HydrationDatabase extends Dexie {
     this.version(1).stores({
       events: 'id, scheduledAt, status, createdAt',
     });
+    this.version(2).stores({
+      events: 'id, scheduledAt, status, createdAt',
+    });
   }
 }
 
