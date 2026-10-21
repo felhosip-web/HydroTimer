@@ -10,6 +10,7 @@
     <string name="missed_alert_title">⚠️ Elmulasztott jelzés!</string>
     <string name="missed_alert_body">Nem érkezett nyugtázás %1$d mp-en belül. A következő időszakasz automatikusan elindult!</string>
     <string name="action_drink">Megittam (+250ml)</string>
+    <string name="action_drink_amount">Megittam (+%1$dml)</string>
     <string name="action_acknowledge">Nyugtázás</string>
     <string name="action_snooze">10 perc múlva</string>
     <string name="status_running">Időzítő aktív</string>

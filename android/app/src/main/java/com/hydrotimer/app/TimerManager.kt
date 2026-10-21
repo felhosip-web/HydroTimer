@@ -104,8 +104,8 @@ class TimerManager(
         val alertDeadline = if (prefs.contains(KEY_ALERT_DEADLINE_TIMESTAMP)) prefs.getLong(KEY_ALERT_DEADLINE_TIMESTAMP, 0L).let { if (it <= 0L) null else it } else null
         val alertScheduled = if (prefs.contains(KEY_ALERT_SCHEDULED_TIMESTAMP)) prefs.getLong(KEY_ALERT_SCHEDULED_TIMESTAMP, 0L).let { if (it <= 0L) null else it } else null
         val isTestAlert = prefs.getBoolean(KEY_IS_TEST_ALERT, false)
-        val intakeMl = if (prefs.contains("snapshot_intake_ml")) prefs.getInt("snapshot_intake_ml", 0).let { if (it <= 0) null else it } else null
-        val dailyGoalMl = if (prefs.contains("snapshot_daily_goal_ml")) prefs.getInt("snapshot_daily_goal_ml", 0).let { if (it <= 0) null else it } else null
+        val intakeMl = if (prefs.contains("snapshot_intake_ml")) prefs.getInt("snapshot_intake_ml", 0) else null
+        val dailyGoalMl = if (prefs.contains("snapshot_daily_goal_ml")) prefs.getInt("snapshot_daily_goal_ml", 0) else null
 
         return TimerSnapshot(
             state = state,

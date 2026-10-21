@@ -261,4 +261,37 @@ describe('Event Log P3 Snapshot Unit & Integration Tests (Web)', () => {
 
     v2Repo.close();
   });
+
+  test('8. DRINK action uses alert captured intakeMl snapshot rather than updated config', () => {
+    const triggerEvent: TimerEvent = {
+      type: 'TIMER_TRIGGER',
+      timerGeneration: 1,
+      scheduledAt: 1000000,
+      timestamp: 1000000,
+    };
+
+    const triggerResult = TimerDomainEngine.processEvent(INITIAL_SNAPSHOT, triggerEvent, CONFIG, 1000000);
+    expect(triggerResult.newSnapshot.intakeMl).toBe(300);
+
+    // User changes config while alert is active to 500ml
+    const updatedConfig: EngineConfig = {
+      ...CONFIG,
+      intakePerAlertMl: 500,
+    };
+
+    const drinkEvent: TimerEvent = {
+      type: 'DRINK',
+      timerGeneration: 1,
+      alertId: 1001,
+      timestamp: 1001000,
+    };
+
+    const drinkResult = TimerDomainEngine.processEvent(triggerResult.newSnapshot, drinkEvent, updatedConfig, 1001000);
+    const drinkEffect = drinkResult.effects.find((e) => e.type === 'RecordDrink');
+
+    expect(drinkEffect).toBeDefined();
+    if (drinkEffect?.type === 'RecordDrink') {
+      expect(drinkEffect.amountMl).toBe(300); // Uses captured 300ml, NOT updated 500ml
+    }
+  });
 });

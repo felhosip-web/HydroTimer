@@ -318,7 +318,7 @@ export class TimerDomainEngine {
     }
 
     const activeAlertId = snapshot.alertId;
-    const intake = Math.max(0, config.intakePerAlertMl);
+    const intake = Math.max(0, snapshot.intakeMl ?? config.intakePerAlertMl);
     const shouldAutoRestart = config.mode !== 'countdown' || config.autoRestart !== false;
 
     if (!shouldAutoRestart) {

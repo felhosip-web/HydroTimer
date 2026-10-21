@@ -250,7 +250,7 @@ object TimerDomainEngine {
         }
 
         val activeAlertId = snapshot.alertId
-        val intake = Math.max(0, config.intakePerAlertMl)
+        val intake = Math.max(0, snapshot.intakeMl ?: config.intakePerAlertMl)
         val shouldAutoRestart = config.mode != "countdown" || config.autoRestart
 
         if (!shouldAutoRestart) {

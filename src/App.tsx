@@ -231,7 +231,7 @@ export default function App() {
   const handleShowReminder = useCallback((_gen: number, _alertId: number, intakeMl?: number, dailyGoalMl?: number) => {
     const inQuietHours = isCurrentlyInQuietHours();
     const notificationBody =
-      intakeMl !== undefined && intakeMl !== null && dailyGoalMl !== undefined && dailyGoalMl !== null
+      intakeMl !== undefined && intakeMl !== null && intakeMl > 0 && dailyGoalMl !== undefined && dailyGoalMl !== null && dailyGoalMl > 0
         ? `Ideje inni: ${intakeMl} ml víz. Napi cél: ${dailyGoalMl} ml.`
         : `Nyugtázási időablak: ${Math.max(5, config.alertDurationSeconds || 15)} másodperc áll rendelkezésre!`;
 
