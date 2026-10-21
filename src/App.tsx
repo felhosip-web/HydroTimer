@@ -230,15 +230,17 @@ export default function App() {
 
   const handleShowReminder = useCallback((_gen: number, _alertId: number, intakeMl?: number, dailyGoalMl?: number) => {
     const inQuietHours = isCurrentlyInQuietHours();
-    const effectiveIntake = intakeMl ?? config.intakeMlPerAlert;
-    const effectiveGoal = dailyGoalMl ?? config.dailyGoalMl;
+    const notificationBody =
+      intakeMl !== undefined && intakeMl !== null && dailyGoalMl !== undefined && dailyGoalMl !== null
+        ? `Ideje inni: ${intakeMl} ml víz. Napi cél: ${dailyGoalMl} ml.`
+        : `Nyugtázási időablak: ${Math.max(5, config.alertDurationSeconds || 15)} másodperc áll rendelkezésre!`;
 
     if (!inQuietHours) {
       soundHaptics.playAlertSound(config.soundType);
       soundHaptics.triggerVibration(config.vibrationPattern);
       soundHaptics.sendSystemNotification(
         `⏰ ${config.title} Jelzés!`,
-        `Ideje inni: ${effectiveIntake} ml víz. Napi cél: ${effectiveGoal} ml.`
+        notificationBody
       );
     }
 

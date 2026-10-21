@@ -1,5 +1,5 @@
 import { indexedDB, IDBKeyRange } from 'fake-indexeddb';
-import Dexie from 'dexie';
+import Dexie, { Table } from 'dexie';
 
 Dexie.dependencies.indexedDB = indexedDB;
 Dexie.dependencies.IDBKeyRange = IDBKeyRange;
@@ -224,5 +224,41 @@ describe('Event Log P3 Snapshot Unit & Integration Tests (Web)', () => {
     expect(record).not.toBeNull();
     expect(record?.intakeMl).toBeUndefined();
     expect(record?.dailyGoalMl).toBeUndefined();
+  });
+
+  test('7. Dexie v1 -> v2 migration preserves legacy events without fabricating snapshot values', async () => {
+    const migDbName = `test_mig_db_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+
+    class LegacyDexieDb extends Dexie {
+      events!: Table<any, string>;
+      constructor() {
+        super(migDbName);
+        this.version(1).stores({
+          events: 'id, scheduledAt, status, createdAt',
+        });
+      }
+    }
+
+    const v1Db = new LegacyDexieDb();
+    await v1Db.events.add({
+      id: '1_555',
+      timerGeneration: 1,
+      alertId: 555,
+      scheduledAt: 1000000,
+      createdAt: 1000000,
+      status: 'DRANK',
+      updatedAt: 1000000,
+    });
+    v1Db.close();
+
+    const v2Repo = new HydrationEventRepository(migDbName);
+    const legacyRecord = await v2Repo.getById('1_555');
+
+    expect(legacyRecord).not.toBeNull();
+    expect(legacyRecord?.status).toBe('DRANK');
+    expect(legacyRecord?.intakeMl).toBeUndefined();
+    expect(legacyRecord?.dailyGoalMl).toBeUndefined();
+
+    v2Repo.close();
   });
 });
