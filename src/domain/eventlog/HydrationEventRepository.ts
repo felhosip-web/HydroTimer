@@ -120,26 +120,28 @@ export class HydrationEventRepository {
    * If an event with the same ID already exists, returns the existing record without overwriting.
    */
   public async createIfAbsent(event: HydrationEvent): Promise<HydrationEvent> {
-    const existing = await this.getById(event.id);
-    if (existing) {
-      return existing;
-    }
-    try {
-      await this.db.events.add(event);
-      return event;
-    } catch (err: unknown) {
-      const isConstraintError =
-        (err && typeof err === 'object' && 'name' in err && (err as { name: string }).name === 'ConstraintError') ||
-        (err instanceof Error && (err.message.includes('Constraint') || err.message.includes('Key already exists')));
-
-      if (isConstraintError) {
-        const recheck = await this.getById(event.id);
-        if (recheck) {
-          return recheck;
-        }
+    return this.db.transaction('rw', this.db.events, async () => {
+      const existing = await this.db.events.get(event.id);
+      if (existing) {
+        return existing;
       }
-      throw err;
-    }
+      try {
+        await this.db.events.add(event);
+        return event;
+      } catch (err: unknown) {
+        const isConstraintError =
+          (err && typeof err === 'object' && 'name' in err && (err as { name: string }).name === 'ConstraintError') ||
+          (err instanceof Error && (err.message.includes('Constraint') || err.message.includes('Key already exists')));
+
+        if (isConstraintError) {
+          const recheck = await this.db.events.get(event.id);
+          if (recheck) {
+            return recheck;
+          }
+        }
+        throw err;
+      }
+    });
   }
 
   /**

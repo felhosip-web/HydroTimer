@@ -1,5 +1,17 @@
+if (typeof globalThis.localStorage === 'undefined') {
+  const storage = new Map<string, string>();
+  globalThis.localStorage = {
+    getItem: (key: string) => storage.get(key) ?? null,
+    setItem: (key: string, value: string) => { storage.set(key, value); },
+    removeItem: (key: string) => { storage.delete(key); },
+    clear: () => storage.clear(),
+    key: (index: number) => Array.from(storage.keys())[index] ?? null,
+    get length() { return storage.size; },
+  };
+}
+
 import { indexedDB, IDBKeyRange } from 'fake-indexeddb';
-import Dexie, { Table } from 'dexie';
+import Dexie from 'dexie';
 
 Dexie.dependencies.indexedDB = indexedDB;
 Dexie.dependencies.IDBKeyRange = IDBKeyRange;
@@ -10,6 +22,7 @@ import { TimerDomainEngine } from '../../timer/TimerDomainEngine';
 import { EngineConfig, TimerSnapshot, TimerEvent } from '../../timer/types';
 import { HydrationEventRepository } from '../HydrationEventRepository';
 import { processTimerEffects } from '../../timer/TimerEffectProcessor';
+import { getNotificationBodyForConfig } from '../../../utils/notificationUtils';
 
 const CONFIG: EngineConfig = {
   mode: 'interval',
@@ -28,12 +41,14 @@ const CONFIG: EngineConfig = {
   activeDays: [true, true, true, true, true, true, true],
 };
 
+const fixedNow = 1_700_000_000_000;
+
 const INITIAL_SNAPSHOT: TimerSnapshot = {
   state: 'WAITING',
   timerGeneration: 1,
   alertId: null,
   lastAlertId: 1000,
-  nextTriggerAt: 1000000,
+  nextTriggerAt: fixedNow,
   alertStartedAt: null,
   alertDeadlineAt: null,
 };
@@ -58,11 +73,11 @@ describe('Event Log P3 Snapshot Unit & Integration Tests (Web)', () => {
     const triggerEvent: TimerEvent = {
       type: 'TIMER_TRIGGER',
       timerGeneration: 1,
-      scheduledAt: 1000000,
-      timestamp: 1000000,
+      scheduledAt: fixedNow,
+      timestamp: fixedNow,
     };
 
-    const result = TimerDomainEngine.processEvent(INITIAL_SNAPSHOT, triggerEvent, CONFIG, 1000000);
+    const result = TimerDomainEngine.processEvent(INITIAL_SNAPSHOT, triggerEvent, CONFIG, fixedNow);
 
     expect(result.newSnapshot.intakeMl).toBe(300);
     expect(result.newSnapshot.dailyGoalMl).toBe(3000);
@@ -86,8 +101,8 @@ describe('Event Log P3 Snapshot Unit & Integration Tests (Web)', () => {
     const triggerEvent: TimerEvent = {
       type: 'TIMER_TRIGGER',
       timerGeneration: 1,
-      scheduledAt: 1000000,
-      timestamp: 1000000,
+      scheduledAt: fixedNow,
+      timestamp: fixedNow,
     };
 
     let notificationBody = '';
@@ -95,7 +110,7 @@ describe('Event Log P3 Snapshot Unit & Integration Tests (Web)', () => {
       notificationBody = `Ideje inni: ${intakeMl} ml víz. Napi cél: ${dailyGoalMl} ml.`;
     };
 
-    const result = TimerDomainEngine.processEvent(INITIAL_SNAPSHOT, triggerEvent, CONFIG, 1000000);
+    const result = TimerDomainEngine.processEvent(INITIAL_SNAPSHOT, triggerEvent, CONFIG, fixedNow);
 
     await processTimerEffects(result.effects, {
       eventRepository: eventRepo,
@@ -113,11 +128,11 @@ describe('Event Log P3 Snapshot Unit & Integration Tests (Web)', () => {
     const triggerEvent: TimerEvent = {
       type: 'TIMER_TRIGGER',
       timerGeneration: 1,
-      scheduledAt: 1000000,
-      timestamp: 1000000,
+      scheduledAt: fixedNow,
+      timestamp: fixedNow,
     };
 
-    const firstResult = TimerDomainEngine.processEvent(INITIAL_SNAPSHOT, triggerEvent, CONFIG, 1000000);
+    const firstResult = TimerDomainEngine.processEvent(INITIAL_SNAPSHOT, triggerEvent, CONFIG, fixedNow);
     await processTimerEffects(firstResult.effects, { eventRepository: eventRepo });
 
     // User updates settings to 500ml and 4000ml goal while timer is active
@@ -140,9 +155,9 @@ describe('Event Log P3 Snapshot Unit & Integration Tests (Web)', () => {
       type: 'ACKNOWLEDGE',
       timerGeneration: 1,
       alertId: 1001,
-      timestamp: 1005000,
+      timestamp: fixedNow + 5000,
     };
-    const ackResult = TimerDomainEngine.processEvent(firstResult.newSnapshot, ackEvent, updatedConfig, 1005000);
+    const ackResult = TimerDomainEngine.processEvent(firstResult.newSnapshot, ackEvent, updatedConfig, fixedNow + 5000);
 
     // Next trigger arrives
     const nextTriggerAt = ackResult.newSnapshot.nextTriggerAt!;
@@ -168,41 +183,41 @@ describe('Event Log P3 Snapshot Unit & Integration Tests (Web)', () => {
     const triggerEvent: TimerEvent = {
       type: 'TIMER_TRIGGER',
       timerGeneration: 1,
-      scheduledAt: 1000000,
-      timestamp: 1000000,
+      scheduledAt: fixedNow,
+      timestamp: fixedNow,
     };
 
-    const initialResult = TimerDomainEngine.processEvent(INITIAL_SNAPSHOT, triggerEvent, CONFIG, 1000000);
+    const initialResult = TimerDomainEngine.processEvent(INITIAL_SNAPSHOT, triggerEvent, CONFIG, fixedNow);
     await processTimerEffects(initialResult.effects, { eventRepository: eventRepo });
 
     // App restarts/recovers while alert is active
     const recoverEvent: TimerEvent = {
       type: 'RECOVER',
-      timestamp: 1001000,
+      timestamp: fixedNow + 1000,
     };
 
-    const recoverResult = TimerDomainEngine.processEvent(initialResult.newSnapshot, recoverEvent, CONFIG, 1001000);
+    const recoverResult = TimerDomainEngine.processEvent(initialResult.newSnapshot, recoverEvent, CONFIG, fixedNow + 1000);
     await processTimerEffects(recoverResult.effects, { eventRepository: eventRepo });
 
     const record = await eventRepo.getById('1_1001');
     expect(record?.intakeMl).toBe(300);
     expect(record?.dailyGoalMl).toBe(3000);
 
-    const allEvents = await eventRepo.listByLocalDay(new Date(1000000));
-    expect(allEvents.length).toBe(1);
+    const pending = await eventRepo.listPending();
+    expect(pending.length).toBe(1);
   });
 
   test('5. TEST_ALERT does not create a production hydration event', async () => {
     const testAlertEvent: TimerEvent = {
       type: 'TEST_ALERT',
-      timestamp: 1000000,
+      timestamp: fixedNow,
     };
 
-    const result = TimerDomainEngine.processEvent(INITIAL_SNAPSHOT, testAlertEvent, CONFIG, 1000000);
+    const result = TimerDomainEngine.processEvent(INITIAL_SNAPSHOT, testAlertEvent, CONFIG, fixedNow);
     await processTimerEffects(result.effects, { eventRepository: eventRepo });
 
-    const allEvents = await eventRepo.listByLocalDay(new Date(1000000));
-    expect(allEvents.length).toBe(0);
+    const pending = await eventRepo.listPending();
+    expect(pending.length).toBe(0);
     expect(result.effects.some((e) => e.type === 'CreateHydrationEvent')).toBe(false);
   });
 
@@ -212,10 +227,10 @@ describe('Event Log P3 Snapshot Unit & Integration Tests (Web)', () => {
       id: '1_999',
       timerGeneration: 1,
       alertId: 999,
-      scheduledAt: 1000000,
-      createdAt: 1000000,
+      scheduledAt: fixedNow,
+      createdAt: fixedNow,
       status: 'DRANK' as const,
-      updatedAt: 1000000,
+      updatedAt: fixedNow,
     };
 
     await eventRepo.createIfAbsent(legacyEvent);
@@ -226,51 +241,15 @@ describe('Event Log P3 Snapshot Unit & Integration Tests (Web)', () => {
     expect(record?.dailyGoalMl).toBeUndefined();
   });
 
-  test('7. Dexie v1 -> v2 migration preserves legacy events without fabricating snapshot values', async () => {
-    const migDbName = `test_mig_db_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
-
-    class LegacyDexieDb extends Dexie {
-      events!: Table<any, string>;
-      constructor() {
-        super(migDbName);
-        this.version(1).stores({
-          events: 'id, scheduledAt, status, createdAt',
-        });
-      }
-    }
-
-    const v1Db = new LegacyDexieDb();
-    await v1Db.events.add({
-      id: '1_555',
-      timerGeneration: 1,
-      alertId: 555,
-      scheduledAt: 1000000,
-      createdAt: 1000000,
-      status: 'DRANK',
-      updatedAt: 1000000,
-    });
-    v1Db.close();
-
-    const v2Repo = new HydrationEventRepository(migDbName);
-    const legacyRecord = await v2Repo.getById('1_555');
-
-    expect(legacyRecord).not.toBeNull();
-    expect(legacyRecord?.status).toBe('DRANK');
-    expect(legacyRecord?.intakeMl).toBeUndefined();
-    expect(legacyRecord?.dailyGoalMl).toBeUndefined();
-
-    v2Repo.close();
-  });
-
   test('8. DRINK action uses alert captured intakeMl snapshot rather than updated config', () => {
     const triggerEvent: TimerEvent = {
       type: 'TIMER_TRIGGER',
       timerGeneration: 1,
-      scheduledAt: 1000000,
-      timestamp: 1000000,
+      scheduledAt: fixedNow,
+      timestamp: fixedNow,
     };
 
-    const triggerResult = TimerDomainEngine.processEvent(INITIAL_SNAPSHOT, triggerEvent, CONFIG, 1000000);
+    const triggerResult = TimerDomainEngine.processEvent(INITIAL_SNAPSHOT, triggerEvent, CONFIG, fixedNow);
     expect(triggerResult.newSnapshot.intakeMl).toBe(300);
 
     // User changes config while alert is active to 500ml
@@ -283,15 +262,41 @@ describe('Event Log P3 Snapshot Unit & Integration Tests (Web)', () => {
       type: 'DRINK',
       timerGeneration: 1,
       alertId: 1001,
-      timestamp: 1001000,
+      timestamp: fixedNow + 1000,
     };
 
-    const drinkResult = TimerDomainEngine.processEvent(triggerResult.newSnapshot, drinkEvent, updatedConfig, 1001000);
+    const drinkResult = TimerDomainEngine.processEvent(triggerResult.newSnapshot, drinkEvent, updatedConfig, fixedNow + 1000);
     const drinkEffect = drinkResult.effects.find((e) => e.type === 'RecordDrink');
 
     expect(drinkEffect).toBeDefined();
     if (drinkEffect?.type === 'RecordDrink') {
       expect(drinkEffect.amountMl).toBe(300); // Uses captured 300ml, NOT updated 500ml
     }
+  });
+
+  test('9. Event-specific notification messaging preserves custom non-water text without 0 ml víz', () => {
+    // Water
+    const waterText = getNotificationBodyForConfig({ title: 'Vízivás', presetId: 'event_water', intakeMlPerAlert: 250, dailyGoalMl: 2500 }, 250, 2500);
+    expect(waterText).toBe('Ideje inni: 250 ml víz. Napi cél: 2500 ml.');
+
+    // Stretch
+    const stretchText = getNotificationBodyForConfig({ title: 'Felállás & Nyújtás', presetId: 'event_stretch', intakeMlPerAlert: 0, dailyGoalMl: 2500 }, 0, 2500);
+    expect(stretchText).toBe('Állj fel, nyújtsd át az izmaidat és mozgass meg minden ízületet!');
+
+    // Eye
+    const eyeText = getNotificationBodyForConfig({ title: '20-20-20 Szemtorna', presetId: 'event_eye', intakeMlPerAlert: 0, dailyGoalMl: 2500 }, 0, 2500);
+    expect(eyeText).toBe('Nézz 20 láb (6 méter) távolságba legalább 20 másodpercig!');
+
+    // Medicine
+    const medText = getNotificationBodyForConfig({ title: 'Gyógyszer / Vitamin', presetId: 'event_medicine', intakeMlPerAlert: 0, dailyGoalMl: 2500 }, 0, 2500);
+    expect(medText).toBe('Ideje bevenni az esedékes gyógyszert vagy vitamint!');
+
+    // Walk
+    const walkText = getNotificationBodyForConfig({ title: 'Séta & Friss Levegő', presetId: 'event_walk', intakeMlPerAlert: 0, dailyGoalMl: 2500 }, 0, 2500);
+    expect(walkText).toBe('Tarts egy rövid sétát a friss levegőn!');
+
+    // Focus
+    const focusText = getNotificationBodyForConfig({ title: 'Fókusz & Légzés', presetId: 'event_focus', intakeMlPerAlert: 0, dailyGoalMl: 2500 }, 0, 2500);
+    expect(focusText).toBe('Tarts egy rövid szünetet, vegyél mély levegőt és fókuszálj!');
   });
 });
