@@ -600,6 +600,7 @@ export default function App() {
               }}
               onEditProgress={(newAmount) => setWaterIntakeMl(newAmount)}
               onUpdateDailyGoal={(newGoal) => setConfig((prev) => ({ ...prev, dailyGoalMl: newGoal }))}
+              eventRepository={timerController.eventRepository}
             />
           </div>
         </div>
@@ -655,6 +656,7 @@ export default function App() {
             }}
             onEditProgress={(newAmount) => setWaterIntakeMl(newAmount)}
             onUpdateDailyGoal={(newGoal) => setConfig((prev) => ({ ...prev, dailyGoalMl: newGoal }))}
+            eventRepository={timerController.eventRepository}
           />
         </div>
       </main>

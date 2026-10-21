@@ -1,4 +1,4 @@
-import React, { useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Droplets,
   Clock,
@@ -12,6 +12,7 @@ import {
   TrendingUp,
   Award,
   Target,
+  ListFilter,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -24,6 +25,8 @@ import {
   Cell,
 } from 'recharts';
 import { ActivityLog, TimerConfig } from '../types';
+import { EventLogView } from './EventLogView';
+import { HydrationEventRepository } from '../domain/eventlog/HydrationEventRepository';
 
 interface DailyStatsProps {
   config: TimerConfig;
@@ -33,6 +36,7 @@ interface DailyStatsProps {
   onClearLogs: () => void;
   onEditProgress?: (newAmount: number) => void;
   onUpdateDailyGoal?: (newGoalMl: number) => void;
+  eventRepository?: HydrationEventRepository;
 }
 
 interface DailyIntakePoint {
@@ -96,31 +100,32 @@ export const DailyStats: React.FC<DailyStatsProps> = ({
   onClearLogs,
   onEditProgress,
   onUpdateDailyGoal,
+  eventRepository,
 }) => {
-  const [isEditingIntakeModal, setIsEditingIntakeModal] = React.useState(false);
-  const [isEditingGoalModal, setIsEditingGoalModal] = React.useState(false);
-  const [tempIntakeVal, setTempIntakeVal] = React.useState('');
-  const [tempGoalVal, setTempGoalVal] = React.useState('');
+  const [subTab, setSubTab] = useState<'stats' | 'events'>('stats');
+  const [isEditingIntakeModal, setIsEditingIntakeModal] = useState(false);
+  const [isEditingGoalModal, setIsEditingGoalModal] = useState(false);
+  const [tempIntakeVal, setTempIntakeVal] = useState('');
+  const [tempGoalVal, setTempGoalVal] = useState('');
 
   const goalPercent = Math.min(100, Math.round((waterIntakeMl / (config.dailyGoalMl || 2500)) * 100));
-
   const remainingToday = Math.max(0, (config.dailyGoalMl || 2500) - waterIntakeMl);
 
-  // Compute today's logs for quick stats
   const todayLogs = useMemo(() => {
     const today = new Date();
     return logs.filter((log) => {
       const logDate = new Date(log.timestamp);
-      return logDate.getDate() === today.getDate() &&
-             logDate.getMonth() === today.getMonth() &&
-             logDate.getFullYear() === today.getFullYear();
+      return (
+        logDate.getDate() === today.getDate() &&
+        logDate.getMonth() === today.getMonth() &&
+        logDate.getFullYear() === today.getFullYear()
+      );
     });
   }, [logs]);
 
-  const todayAckCount = todayLogs.filter(log => !log.missed).length;
-  const todayMissedCount = todayLogs.filter(log => log.missed).length;
+  const todayAckCount = todayLogs.filter((log) => !log.missed).length;
+  const todayMissedCount = todayLogs.filter((log) => log.missed).length;
 
-  // Sync today's live intake into persistent 7-day history storage
   useEffect(() => {
     try {
       const now = new Date();
@@ -134,20 +139,18 @@ export const DailyStats: React.FC<DailyStatsProps> = ({
     }
   }, [waterIntakeMl]);
 
-  // Compute 7-day dataset for Recharts
   const sevenDaysData = useMemo<DailyIntakePoint[]>(() => {
     const result: DailyIntakePoint[] = [];
     const now = new Date();
     const dailyGoal = config.dailyGoalMl || 2500;
 
-    // Realistic baseline historical profile if the user hasn't accumulated 7 days yet
     const baselineDefaults: Record<number, number> = {
-      6: 2100, // 6 days ago
-      5: 2450, // 5 days ago
-      4: 2600, // 4 days ago (met goal)
-      3: 1850, // 3 days ago
-      2: 2300, // 2 days ago
-      1: 2550, // yesterday (met goal)
+      6: 2100,
+      5: 2450,
+      4: 2600,
+      3: 1850,
+      2: 2300,
+      1: 2550,
     };
 
     let savedHistory: Record<string, number> = {};
@@ -181,7 +184,6 @@ export const DailyStats: React.FC<DailyStatsProps> = ({
       } else if (savedHistory[dateKey] !== undefined) {
         intakeMl = savedHistory[dateKey];
       } else {
-        // Calculate from activity logs if any match this past day
         const dayLogs = logs.filter((l) => {
           const logDate = new Date(l.timestamp);
           return (
@@ -214,7 +216,6 @@ export const DailyStats: React.FC<DailyStatsProps> = ({
     return result;
   }, [config.dailyGoalMl, waterIntakeMl, logs]);
 
-  // Aggregate metrics across the 7 days
   const averageIntake = Math.round(
     sevenDaysData.reduce((acc, curr) => acc + curr.intakeMl, 0) / sevenDaysData.length
   );
@@ -226,424 +227,476 @@ export const DailyStats: React.FC<DailyStatsProps> = ({
 
   return (
     <div className="bg-slate-900/70 border border-slate-800 rounded-3xl p-5 backdrop-blur-sm space-y-5">
-      {/* Daily Quick Summary Grid (Sync with Android App) */}
-      <div className="mb-2">
-        <h4 className="text-xs font-bold text-white mb-2 flex items-center gap-1.5">
-          <BarChart3 className="w-4 h-4 text-sky-400" />
-          Mai Statisztika
-        </h4>
-
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-2.5 text-center flex flex-col items-center justify-center">
-            <div className="text-[10px] text-slate-400 mb-0.5 uppercase tracking-wider font-semibold">Megivott</div>
-            <div className="text-base font-bold font-mono text-emerald-400">
-              {waterIntakeMl} <span className="text-[10px] font-sans">ml</span>
-            </div>
-          </div>
-
-          <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-2.5 text-center flex flex-col items-center justify-center">
-            <div className="text-[10px] text-slate-400 mb-0.5 uppercase tracking-wider font-semibold">Hátralévő</div>
-            <div className="text-base font-bold font-mono text-sky-400">
-              {remainingToday} <span className="text-[10px] font-sans">ml</span>
-            </div>
-          </div>
-
-          <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-2.5 text-center flex flex-col items-center justify-center">
-            <div className="text-[10px] text-slate-400 mb-0.5 uppercase tracking-wider font-semibold">Nyugtázott</div>
-            <div className="text-base font-bold text-white">
-              {todayAckCount}
-            </div>
-          </div>
-
-          <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-2.5 text-center flex flex-col items-center justify-center">
-            <div className="text-[10px] text-slate-400 mb-0.5 uppercase tracking-wider font-semibold">Elmulasztott</div>
-            <div className="text-base font-bold text-rose-400">
-              {todayMissedCount}
-            </div>
-          </div>
-        </div>
+      {/* Internal Subview Tabs: Statisztikák / Események */}
+      <div className="grid grid-cols-2 gap-1 bg-slate-950/80 p-1 rounded-2xl border border-slate-800 text-xs font-bold">
+        <button
+          onClick={() => setSubTab('stats')}
+          id="subtab-stats-btn"
+          className={`py-2 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+            subTab === 'stats'
+              ? 'bg-sky-500 text-white shadow-md'
+              : 'text-slate-400 hover:text-white'
+          }`}
+        >
+          <BarChart3 className="w-3.5 h-3.5" />
+          <span>Statisztikák</span>
+        </button>
+        <button
+          onClick={() => setSubTab('events')}
+          id="subtab-events-btn"
+          className={`py-2 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+            subTab === 'events'
+              ? 'bg-sky-500 text-white shadow-md'
+              : 'text-slate-400 hover:text-white'
+          }`}
+        >
+          <ListFilter className="w-3.5 h-3.5" />
+          <span>Események</span>
+        </button>
       </div>
 
-      {/* Daily Goal Header */}
-      <div>
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-2">
-            <div className="p-2 rounded-xl bg-sky-500/10 text-sky-400 border border-sky-500/20">
-              <Droplets className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-sm font-bold text-white">Napi Hidratációs Cél</h3>
-                <button
-                  onClick={() => {
-                    setTempIntakeVal(waterIntakeMl.toString());
-                    setIsEditingIntakeModal(true);
-                  }}
-                  className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors"
-                  title="Mai fogyasztás módosítása"
-                  id="edit-intake-btn"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-edit-2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
-                </button>
-                <button
-                  onClick={() => {
-                    setTempGoalVal((config.dailyGoalMl || 2500).toString());
-                    setIsEditingGoalModal(true);
-                  }}
-                  className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-sky-400 hover:text-sky-300 transition-colors"
-                  title="Napi cél módosítása"
-                  id="edit-goal-btn"
-                >
-                  <Target className="w-3.5 h-3.5" />
-                </button>
+      {subTab === 'events' ? (
+        <EventLogView repository={eventRepository!} />
+      ) : (
+        <>
+          {/* Daily Quick Summary Grid */}
+          <div className="mb-2">
+            <h4 className="text-xs font-bold text-white mb-2 flex items-center gap-1.5">
+              <BarChart3 className="w-4 h-4 text-sky-400" />
+              Mai Statisztika
+            </h4>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-2.5 text-center flex flex-col items-center justify-center">
+                <div className="text-[10px] text-slate-400 mb-0.5 uppercase tracking-wider font-semibold">
+                  Megivott
+                </div>
+                <div className="text-base font-bold font-mono text-emerald-400">
+                  {waterIntakeMl} <span className="text-[10px] font-sans">ml</span>
+                </div>
               </div>
-              <p className="text-xs text-slate-400">
-                {waterIntakeMl} ml / {config.dailyGoalMl || 2500} ml
-              </p>
-            </div>
-          </div>
-          <span className="text-lg font-extrabold font-mono text-sky-400">
-            {goalPercent}%
-          </span>
-        </div>
 
-        {/* Progress Bar */}
-        <div className="w-full h-3 bg-slate-800 rounded-full overflow-hidden p-0.5 border border-slate-700/50">
-          <div
-            className="h-full bg-gradient-to-r from-sky-500 via-blue-500 to-teal-400 rounded-full transition-all duration-500 shadow-sm"
-            style={{ width: `${goalPercent}%` }}
-          ></div>
-        </div>
-      </div>
+              <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-2.5 text-center flex flex-col items-center justify-center">
+                <div className="text-[10px] text-slate-400 mb-0.5 uppercase tracking-wider font-semibold">
+                  Hátralévő
+                </div>
+                <div className="text-base font-bold font-mono text-sky-400">
+                  {remainingToday} <span className="text-[10px] font-sans">ml</span>
+                </div>
+              </div>
 
-      {/* Modals for Intake & Goal Editing */}
-      {isEditingIntakeModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
-          <div className="w-full max-w-sm bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-2xl">
-            <h3 className="text-sm font-bold text-white mb-2 flex items-center gap-2">
-              <Droplets className="w-4 h-4 text-sky-400" />
-              <span>Mai Vízfogyasztás Módosítása</span>
-            </h3>
-            <p className="text-xs text-slate-400 mb-4">Add meg a mai napon eddig elfogyasztott vízmennyiséget ml-ben:</p>
-            <input
-              type="number"
-              min="0"
-              max="10000"
-              step="50"
-              value={tempIntakeVal}
-              onChange={(e) => setTempIntakeVal(e.target.value)}
-              className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white font-mono font-bold mb-4 focus:outline-none focus:border-sky-500"
-              id="input-edit-intake"
-            />
-            <div className="flex items-center justify-end gap-2">
-              <button
-                onClick={() => setIsEditingIntakeModal(false)}
-                className="px-3 py-1.5 rounded-xl text-xs text-slate-400 hover:text-white"
-              >
-                Mégse
-              </button>
-              <button
-                onClick={() => {
-                  const val = parseInt(tempIntakeVal, 10);
-                  if (!isNaN(val) && val >= 0 && onEditProgress) {
-                    onEditProgress(val);
-                  }
-                  setIsEditingIntakeModal(false);
-                }}
-                className="px-4 py-1.5 bg-sky-500 hover:bg-sky-400 text-white rounded-xl text-xs font-bold"
-                id="save-intake-btn"
-              >
-                Mentés
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+              <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-2.5 text-center flex flex-col items-center justify-center">
+                <div className="text-[10px] text-slate-400 mb-0.5 uppercase tracking-wider font-semibold">
+                  Nyugtázott
+                </div>
+                <div className="text-base font-bold text-white">{todayAckCount}</div>
+              </div>
 
-      {isEditingGoalModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
-          <div className="w-full max-w-sm bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-2xl">
-            <h3 className="text-sm font-bold text-white mb-2 flex items-center gap-2">
-              <Target className="w-4 h-4 text-emerald-400" />
-              <span>Napi Hidratációs Cél Módosítása</span>
-            </h3>
-            <p className="text-xs text-slate-400 mb-4">Add meg az új kitűzött napi vízbeviteli célt ml-ben:</p>
-            <input
-              type="number"
-              min="500"
-              max="10000"
-              step="100"
-              value={tempGoalVal}
-              onChange={(e) => setTempGoalVal(e.target.value)}
-              className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white font-mono font-bold mb-4 focus:outline-none focus:border-emerald-500"
-              id="input-edit-goal"
-            />
-            <div className="flex items-center justify-end gap-2">
-              <button
-                onClick={() => setIsEditingGoalModal(false)}
-                className="px-3 py-1.5 rounded-xl text-xs text-slate-400 hover:text-white"
-              >
-                Mégse
-              </button>
-              <button
-                onClick={() => {
-                  const val = parseInt(tempGoalVal, 10);
-                  if (!isNaN(val) && val >= 500 && val <= 10000 && onUpdateDailyGoal) {
-                    onUpdateDailyGoal(val);
-                  }
-                  setIsEditingGoalModal(false);
-                }}
-                className="px-4 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-white rounded-xl text-xs font-bold"
-                id="save-goal-btn"
-              >
-                Mentés
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Quick Add Buttons */}
-      <div>
-        <div className="text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
-          Gyors Vízbevitel Naplózás
-        </div>
-        <div className="grid grid-cols-4 gap-2">
-          {[150, 250, 350, 500].map((amount) => (
-            <button
-              key={amount}
-              onClick={() => onQuickAddWater(amount)}
-              className="py-2 px-1 bg-slate-800/80 hover:bg-slate-700 border border-slate-700/60 rounded-xl text-xs font-semibold text-sky-300 transition-all active:scale-95 flex items-center justify-center gap-1"
-            >
-              <Plus className="w-3 h-3" />
-              <span>{amount} ml</span>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* 7-Day Water Intake Recharts Visualization */}
-      <div className="pt-2 border-t border-slate-800/80">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded-lg bg-sky-500/10 text-sky-400 border border-sky-500/20">
-              <BarChart3 className="w-4 h-4" />
-            </div>
-            <div>
-              <h4 className="text-xs font-bold text-white">Elmúlt 7 Nap Vízbevitele</h4>
-              <p className="text-[10px] text-slate-400">Napi megoszlás a kitűzött célhoz mérten</p>
-            </div>
-          </div>
-          <span className="text-[10px] font-semibold text-sky-400 bg-sky-950/60 border border-sky-800/50 px-2 py-0.5 rounded-full">
-            Cél: {config.dailyGoalMl} ml
-          </span>
-        </div>
-
-        {/* 7-Day Key Performance Metrics */}
-        <div className="grid grid-cols-3 gap-2 mb-3">
-          <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-2 text-center">
-            <div className="flex items-center justify-center gap-1 text-[10px] text-slate-400 mb-0.5">
-              <TrendingUp className="w-3 h-3 text-sky-400" />
-              <span>7 napos átlag</span>
-            </div>
-            <div className="text-xs font-bold font-mono text-sky-300">
-              {averageIntake.toLocaleString()} ml
+              <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-2.5 text-center flex flex-col items-center justify-center">
+                <div className="text-[10px] text-slate-400 mb-0.5 uppercase tracking-wider font-semibold">
+                  Elmulasztott
+                </div>
+                <div className="text-base font-bold text-rose-400">{todayMissedCount}</div>
+              </div>
             </div>
           </div>
 
-          <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-2 text-center">
-            <div className="flex items-center justify-center gap-1 text-[10px] text-slate-400 mb-0.5">
-              <Target className="w-3 h-3 text-emerald-400" />
-              <span>Célteljesítés</span>
+          {/* Daily Goal Header */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-xl bg-sky-500/10 text-sky-400 border border-sky-500/20">
+                  <Droplets className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-bold text-white">Napi Hidratációs Cél</h3>
+                    <button
+                      onClick={() => {
+                        setTempIntakeVal(waterIntakeMl.toString());
+                        setIsEditingIntakeModal(true);
+                      }}
+                      className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                      title="Mai fogyasztás módosítása"
+                      id="edit-intake-btn"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="lucide lucide-edit-2"
+                      >
+                        <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setTempGoalVal((config.dailyGoalMl || 2500).toString());
+                        setIsEditingGoalModal(true);
+                      }}
+                      className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-sky-400 hover:text-sky-300 transition-colors cursor-pointer"
+                      title="Napi cél módosítása"
+                      id="edit-goal-btn"
+                    >
+                      <Target className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                  <p className="text-xs text-slate-400">
+                    {waterIntakeMl} ml / {config.dailyGoalMl || 2500} ml
+                  </p>
+                </div>
+              </div>
+              <span className="text-lg font-extrabold font-mono text-sky-400">{goalPercent}%</span>
             </div>
-            <div className="text-xs font-bold font-mono text-emerald-400">
-              {goalsMetCount} / 7 nap
+
+            <div className="w-full h-3 bg-slate-800 rounded-full overflow-hidden p-0.5 border border-slate-700/50">
+              <div
+                className="h-full bg-gradient-to-r from-sky-500 via-blue-500 to-teal-400 rounded-full transition-all duration-500 shadow-sm"
+                style={{ width: `${goalPercent}%` }}
+              ></div>
             </div>
           </div>
 
-          <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-2 text-center">
-            <div className="flex items-center justify-center gap-1 text-[10px] text-slate-400 mb-0.5">
-              <Award className="w-3 h-3 text-amber-400" />
-              <span>Legjobb nap</span>
+          {/* Modals for Intake & Goal Editing */}
+          {isEditingIntakeModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
+              <div className="w-full max-w-sm bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-2xl">
+                <h3 className="text-sm font-bold text-white mb-2 flex items-center gap-2">
+                  <Droplets className="w-4 h-4 text-sky-400" />
+                  <span>Mai Vízfogyasztás Módosítása</span>
+                </h3>
+                <p className="text-xs text-slate-400 mb-4">
+                  Add meg a mai napon eddig elfogyasztott vízmennyiséget ml-ben:
+                </p>
+                <input
+                  type="number"
+                  min="0"
+                  max="10000"
+                  step="50"
+                  value={tempIntakeVal}
+                  onChange={(e) => setTempIntakeVal(e.target.value)}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white font-mono font-bold mb-4 focus:outline-none focus:border-sky-500"
+                  id="input-edit-intake"
+                />
+                <div className="flex items-center justify-end gap-2">
+                  <button
+                    onClick={() => setIsEditingIntakeModal(false)}
+                    className="px-3 py-1.5 rounded-xl text-xs text-slate-400 hover:text-white cursor-pointer"
+                  >
+                    Mégse
+                  </button>
+                  <button
+                    onClick={() => {
+                      const val = parseInt(tempIntakeVal, 10);
+                      if (!isNaN(val) && val >= 0 && onEditProgress) {
+                        onEditProgress(val);
+                      }
+                      setIsEditingIntakeModal(false);
+                    }}
+                    className="px-4 py-1.5 bg-sky-500 hover:bg-sky-400 text-white rounded-xl text-xs font-bold cursor-pointer"
+                    id="save-intake-btn"
+                  >
+                    Mentés
+                  </button>
+                </div>
+              </div>
             </div>
-            <div className="text-xs font-bold font-mono text-amber-300">
-              {bestDay.intakeMl.toLocaleString()} ml
+          )}
+
+          {isEditingGoalModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
+              <div className="w-full max-w-sm bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-2xl">
+                <h3 className="text-sm font-bold text-white mb-2 flex items-center gap-2">
+                  <Target className="w-4 h-4 text-emerald-400" />
+                  <span>Napi Hidratációs Cél Módosítása</span>
+                </h3>
+                <p className="text-xs text-slate-400 mb-4">
+                  Add meg az új kitűzött napi vízbeviteli célt ml-ben:
+                </p>
+                <input
+                  type="number"
+                  min="500"
+                  max="10000"
+                  step="100"
+                  value={tempGoalVal}
+                  onChange={(e) => setTempGoalVal(e.target.value)}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white font-mono font-bold mb-4 focus:outline-none focus:border-emerald-500"
+                  id="input-edit-goal"
+                />
+                <div className="flex items-center justify-end gap-2">
+                  <button
+                    onClick={() => setIsEditingGoalModal(false)}
+                    className="px-3 py-1.5 rounded-xl text-xs text-slate-400 hover:text-white cursor-pointer"
+                  >
+                    Mégse
+                  </button>
+                  <button
+                    onClick={() => {
+                      const val = parseInt(tempGoalVal, 10);
+                      if (!isNaN(val) && val >= 500 && val <= 10000 && onUpdateDailyGoal) {
+                        onUpdateDailyGoal(val);
+                      }
+                      setIsEditingGoalModal(false);
+                    }}
+                    className="px-4 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-white rounded-xl text-xs font-bold cursor-pointer"
+                    id="save-goal-btn"
+                  >
+                    Mentés
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Quick Add Buttons */}
+          <div>
+            <div className="text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
+              Gyors Vízbevitel Naplózás
+            </div>
+            <div className="grid grid-cols-4 gap-2">
+              {[150, 250, 350, 500].map((amount) => (
+                <button
+                  key={amount}
+                  onClick={() => onQuickAddWater(amount)}
+                  className="py-2 px-1 bg-slate-800/80 hover:bg-slate-700 border border-slate-700/60 rounded-xl text-xs font-semibold text-sky-300 transition-all active:scale-95 flex items-center justify-center gap-1 cursor-pointer"
+                >
+                  <Plus className="w-3 h-3" />
+                  <span>{amount} ml</span>
+                </button>
+              ))}
             </div>
           </div>
-        </div>
 
-        {/* Recharts BarChart Container */}
-        <div className="w-full h-48 bg-slate-950/40 rounded-2xl p-2.5 border border-slate-800/60">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart
-              data={sevenDaysData}
-              margin={{ top: 14, right: 6, left: -22, bottom: 0 }}
-            >
-              <XAxis
-                dataKey="dayLabel"
-                axisLine={{ stroke: '#334155' }}
-                tickLine={false}
-                tick={{ fill: '#94a3b8', fontSize: 11, fontWeight: 600 }}
-              />
-              <YAxis
-                axisLine={false}
-                tickLine={false}
-                tick={{ fill: '#64748b', fontSize: 10 }}
-                domain={[0, (dataMax: number) => Math.max(config.dailyGoalMl || 2500, dataMax + 200)]}
-                tickFormatter={(val) => `${Math.round((val / 1000) * 10) / 10}l`}
-              />
-              <Tooltip
-                content={<CustomTooltip />}
-                cursor={{ fill: 'rgba(51, 65, 85, 0.25)', radius: 6 }}
-              />
-              <ReferenceLine
-                y={config.dailyGoalMl || 2500}
-                stroke="#38bdf8"
-                strokeDasharray="3 3"
-                strokeOpacity={0.75}
-                label={{
-                  value: `${config.dailyGoalMl} ml`,
-                  fill: '#38bdf8',
-                  fontSize: 9,
-                  position: 'insideTopRight',
-                  offset: -2,
-                }}
-              />
-              <Bar dataKey="intakeMl" radius={[5, 5, 0, 0]} maxBarSize={36}>
-                {sevenDaysData.map((entry, index) => {
-                  let fillColor = '#0284c7';
-                  if (entry.isToday) {
-                    fillColor = '#38bdf8';
-                  } else if (entry.reachedGoal) {
-                    fillColor = '#06b6d4';
-                  } else {
-                    fillColor = '#0369a1';
-                  }
+          {/* 7-Day Water Intake Recharts Visualization */}
+          <div className="pt-2 border-t border-slate-800/80">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 rounded-lg bg-sky-500/10 text-sky-400 border border-sky-500/20">
+                  <BarChart3 className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold text-white">Elmúlt 7 Nap Vízbevitele</h4>
+                  <p className="text-[10px] text-slate-400">
+                    Napi megoszlás a kitűzött célhoz mérten
+                  </p>
+                </div>
+              </div>
+              <span className="text-[10px] font-semibold text-sky-400 bg-sky-950/60 border border-sky-800/50 px-2 py-0.5 rounded-full">
+                Cél: {config.dailyGoalMl} ml
+              </span>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2 mb-3">
+              <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-2 text-center">
+                <div className="flex items-center justify-center gap-1 text-[10px] text-slate-400 mb-0.5">
+                  <TrendingUp className="w-3 h-3 text-sky-400" />
+                  <span>7 napos átlag</span>
+                </div>
+                <div className="text-xs font-bold font-mono text-sky-300">
+                  {averageIntake.toLocaleString()} ml
+                </div>
+              </div>
+
+              <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-2 text-center">
+                <div className="flex items-center justify-center gap-1 text-[10px] text-slate-400 mb-0.5">
+                  <Target className="w-3 h-3 text-emerald-400" />
+                  <span>Célteljesítés</span>
+                </div>
+                <div className="text-xs font-bold font-mono text-emerald-400">
+                  {goalsMetCount} / 7 nap
+                </div>
+              </div>
+
+              <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-2 text-center">
+                <div className="flex items-center justify-center gap-1 text-[10px] text-slate-400 mb-0.5">
+                  <Award className="w-3 h-3 text-amber-400" />
+                  <span>Legjobb nap</span>
+                </div>
+                <div className="text-xs font-bold font-mono text-amber-300">
+                  {bestDay.intakeMl.toLocaleString()} ml
+                </div>
+              </div>
+            </div>
+
+            <div className="w-full h-48 bg-slate-950/40 rounded-2xl p-2.5 border border-slate-800/60">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={sevenDaysData} margin={{ top: 14, right: 6, left: -22, bottom: 0 }}>
+                  <XAxis
+                    dataKey="dayLabel"
+                    axisLine={{ stroke: '#334155' }}
+                    tickLine={false}
+                    tick={{ fill: '#94a3b8', fontSize: 11, fontWeight: 600 }}
+                  />
+                  <YAxis
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fill: '#64748b', fontSize: 10 }}
+                    domain={[0, (dataMax: number) => Math.max(config.dailyGoalMl || 2500, dataMax + 200)]}
+                    tickFormatter={(val) => `${Math.round((val / 1000) * 10) / 10}l`}
+                  />
+                  <Tooltip
+                    content={<CustomTooltip />}
+                    cursor={{ fill: 'rgba(51, 65, 85, 0.25)', radius: 6 }}
+                  />
+                  <ReferenceLine
+                    y={config.dailyGoalMl || 2500}
+                    stroke="#38bdf8"
+                    strokeDasharray="3 3"
+                    strokeOpacity={0.75}
+                    label={{
+                      value: `${config.dailyGoalMl} ml`,
+                      fill: '#38bdf8',
+                      fontSize: 9,
+                      position: 'insideTopRight',
+                      offset: -2,
+                    }}
+                  />
+                  <Bar dataKey="intakeMl" radius={[5, 5, 0, 0]} maxBarSize={36}>
+                    {sevenDaysData.map((entry, index) => {
+                      let fillColor = '#0284c7';
+                      if (entry.isToday) {
+                        fillColor = '#38bdf8';
+                      } else if (entry.reachedGoal) {
+                        fillColor = '#06b6d4';
+                      } else {
+                        fillColor = '#0369a1';
+                      }
+                      return (
+                        <Cell
+                          key={`cell-${index}`}
+                          fill={fillColor}
+                          stroke={entry.isToday ? '#bae6fd' : 'transparent'}
+                          strokeWidth={entry.isToday ? 1.5 : 0}
+                        />
+                      );
+                    })}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+
+            <div className="flex items-center justify-center gap-4 mt-2 text-[10px] text-slate-400">
+              <div className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded bg-sky-400 border border-sky-200"></span>
+                <span>Ma (Élő)</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded bg-cyan-500"></span>
+                <span>Cél elérve (100%+)</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded bg-sky-700"></span>
+                <span>Bevitel</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-3 h-0.5 border-t border-dashed border-sky-400"></span>
+                <span>Napi cél</span>
+              </div>
+            </div>
+          </div>
+
+          {/* History Log */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-300 uppercase tracking-wider">
+                <Clock className="w-3.5 h-3.5 text-slate-400" />
+                <span>Mai Események &amp; Jelzések ({logs.length})</span>
+              </div>
+              {logs.length > 0 && (
+                <button
+                  onClick={onClearLogs}
+                  title="Napló törlése"
+                  className="text-[11px] text-slate-500 hover:text-rose-400 flex items-center gap-1 transition-colors cursor-pointer"
+                >
+                  <Trash2 className="w-3 h-3" />
+                  <span>Törlés</span>
+                </button>
+              )}
+            </div>
+
+            {logs.length === 0 ? (
+              <div className="text-center py-6 text-xs text-slate-500 bg-slate-950/40 rounded-2xl border border-slate-800/50">
+                Még nincs naplózott esemény a mai napon. Indítsd el az időzítőt!
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                {logs.slice(0, 15).map((log) => {
+                  const timeStr = new Date(log.timestamp).toLocaleTimeString('hu-HU', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  });
+
+                  const isMissed = log.missed;
+                  const isCountdown = log.mode === 'countdown';
+
                   return (
-                    <Cell
-                      key={`cell-${index}`}
-                      fill={fillColor}
-                      stroke={entry.isToday ? '#bae6fd' : 'transparent'}
-                      strokeWidth={entry.isToday ? 1.5 : 0}
-                    />
+                    <div
+                      key={log.id}
+                      className={`flex items-center justify-between p-2.5 rounded-xl text-xs border ${
+                        isMissed
+                          ? 'bg-amber-950/30 border-amber-500/40 text-amber-200'
+                          : isCountdown
+                          ? 'bg-amber-950/20 border-amber-700/40 text-slate-200'
+                          : 'bg-slate-950/60 border-slate-800/70 text-slate-200'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        {isMissed ? (
+                          <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                        ) : isCountdown ? (
+                          <Timer className="w-4 h-4 text-amber-400 shrink-0" />
+                        ) : (
+                          <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+                        )}
+                        <div>
+                          <div
+                            className={`font-semibold ${
+                              isMissed ? 'text-amber-300' : 'text-slate-200'
+                            }`}
+                          >
+                            {log.title}
+                            {log.amountMl ? ` (+${log.amountMl} ml)` : ''}
+                          </div>
+                          <div className="text-[10px] text-slate-400">{timeStr}</div>
+                        </div>
+                      </div>
+
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-[10px] font-medium flex items-center gap-1 ${
+                          isMissed
+                            ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                            : isCountdown
+                            ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
+                            : log.completedOnWatch
+                            ? 'bg-sky-500/15 text-sky-300 border border-sky-500/30'
+                            : 'bg-slate-800 text-slate-400'
+                        }`}
+                      >
+                        {isMissed ? (
+                          <span>Elmulasztva</span>
+                        ) : isCountdown ? (
+                          <span>Visszaszámláló</span>
+                        ) : (
+                          <>
+                            {log.completedOnWatch ? <Watch className="w-3 h-3" /> : null}
+                            <span>{log.completedOnWatch ? 'Okosóra' : 'Telefon'}</span>
+                          </>
+                        )}
+                      </span>
+                    </div>
                   );
                 })}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-
-        {/* Legend */}
-        <div className="flex items-center justify-center gap-4 mt-2 text-[10px] text-slate-400">
-          <div className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded bg-sky-400 border border-sky-200"></span>
-            <span>Ma (Élő)</span>
+              </div>
+            )}
           </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded bg-cyan-500"></span>
-            <span>Cél elérve (100%+)</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded bg-sky-700"></span>
-            <span>Bevitel</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-3 h-0.5 border-t border-dashed border-sky-400"></span>
-            <span>Napi cél</span>
-          </div>
-        </div>
-      </div>
-
-      {/* History Log */}
-      <div>
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-300 uppercase tracking-wider">
-            <Clock className="w-3.5 h-3.5 text-slate-400" />
-            <span>Mai Események &amp; Jelzések ({logs.length})</span>
-          </div>
-          {logs.length > 0 && (
-            <button
-              onClick={onClearLogs}
-              title="Napló törlése"
-              className="text-[11px] text-slate-500 hover:text-rose-400 flex items-center gap-1 transition-colors"
-            >
-              <Trash2 className="w-3 h-3" />
-              <span>Törlés</span>
-            </button>
-          )}
-        </div>
-
-        {logs.length === 0 ? (
-          <div className="text-center py-6 text-xs text-slate-500 bg-slate-950/40 rounded-2xl border border-slate-800/50">
-            Még nincs naplózott esemény a mai napon. Indítsd el az időzítőt!
-          </div>
-        ) : (
-          <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-            {logs.slice(0, 15).map((log) => {
-              const timeStr = new Date(log.timestamp).toLocaleTimeString('hu-HU', {
-                hour: '2-digit',
-                minute: '2-digit',
-              });
-
-              const isMissed = log.missed;
-              const isCountdown = log.mode === 'countdown';
-
-              return (
-                <div
-                  key={log.id}
-                  className={`flex items-center justify-between p-2.5 rounded-xl text-xs border ${
-                    isMissed
-                      ? 'bg-amber-950/30 border-amber-500/40 text-amber-200'
-                      : isCountdown
-                      ? 'bg-amber-950/20 border-amber-700/40 text-slate-200'
-                      : 'bg-slate-950/60 border-slate-800/70 text-slate-200'
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    {isMissed ? (
-                      <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
-                    ) : isCountdown ? (
-                      <Timer className="w-4 h-4 text-amber-400 shrink-0" />
-                    ) : (
-                      <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
-                    )}
-                    <div>
-                      <div className={`font-semibold ${isMissed ? 'text-amber-300' : 'text-slate-200'}`}>
-                        {log.title}
-                        {log.amountMl ? ` (+${log.amountMl} ml)` : ''}
-                      </div>
-                      <div className="text-[10px] text-slate-400">{timeStr}</div>
-                    </div>
-                  </div>
-
-                  <span
-                    className={`px-2 py-0.5 rounded-full text-[10px] font-medium flex items-center gap-1 ${
-                      isMissed
-                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                        : isCountdown
-                        ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
-                        : log.completedOnWatch
-                        ? 'bg-sky-500/15 text-sky-300 border border-sky-500/30'
-                        : 'bg-slate-800 text-slate-400'
-                    }`}
-                  >
-                    {isMissed ? (
-                      <span>Elmulasztva</span>
-                    ) : isCountdown ? (
-                      <span>Visszaszámláló</span>
-                    ) : (
-                      <>
-                        {log.completedOnWatch ? <Watch className="w-3 h-3" /> : null}
-                        <span>{log.completedOnWatch ? 'Okosóra' : 'Telefon'}</span>
-                      </>
-                    )}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
+        </>
+      )}
     </div>
   );
 };
