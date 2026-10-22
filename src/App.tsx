@@ -20,6 +20,7 @@ import {
   BluetoothDeviceState,
   CustomEventItem,
   TimerMode,
+  PresetId,
 } from './types';
 import { soundHaptics } from './services/soundHaptics';
 import { bluetoothWatch } from './services/bluetoothWatch';
@@ -356,7 +357,9 @@ export default function App() {
     const wasRunning = timerController.isRunning;
     const newConfig: TimerConfig = {
       ...config,
+      presetId: event.id as PresetId,
       title: event.title,
+      message: event.message,
       intervalMinutes: event.intervalMinutes,
       alertDurationSeconds: Math.max(5, event.alertDurationSeconds || 15),
       soundType: event.soundType,

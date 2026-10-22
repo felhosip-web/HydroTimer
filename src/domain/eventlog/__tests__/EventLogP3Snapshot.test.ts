@@ -279,6 +279,10 @@ describe('Event Log P3 Snapshot Unit & Integration Tests (Web)', () => {
     const waterText = getNotificationBodyForConfig({ title: 'Vízivás', presetId: 'event_water', intakeMlPerAlert: 250, dailyGoalMl: 2500 }, 250, 2500);
     expect(waterText).toBe('Ideje inni: 250 ml víz. Napi cél: 2500 ml.');
 
+    // Custom configured message on a custom reminder
+    const customConfiguredMsg = getNotificationBodyForConfig({ title: 'Teázás', presetId: 'custom_1', message: 'Igyál egy csésze zöld teát!', intakeMlPerAlert: 0, dailyGoalMl: 2500 }, 0, 2500);
+    expect(customConfiguredMsg).toBe('Igyál egy csésze zöld teát!');
+
     // Stretch
     const stretchText = getNotificationBodyForConfig({ title: 'Felállás & Nyújtás', presetId: 'event_stretch', intakeMlPerAlert: 0, dailyGoalMl: 2500 }, 0, 2500);
     expect(stretchText).toBe('Állj fel, nyújtsd át az izmaidat és mozgass meg minden ízületet!');

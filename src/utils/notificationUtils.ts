@@ -1,8 +1,13 @@
 export function getNotificationBodyForConfig(
-  config: { title: string; presetId?: string; alertDurationSeconds?: number; intakeMlPerAlert?: number; dailyGoalMl?: number },
+  config: { title: string; presetId?: string; alertDurationSeconds?: number; intakeMlPerAlert?: number; dailyGoalMl?: number; message?: string },
   intakeMl?: number,
   dailyGoalMl?: number
 ): string {
+  // If the user configured an explicit custom notification message, preserve and use it
+  if (config.message && config.message.trim().length > 0) {
+    return config.message.trim();
+  }
+
   const effectiveIntake = intakeMl ?? config.intakeMlPerAlert ?? 0;
   const effectiveGoal = dailyGoalMl ?? config.dailyGoalMl ?? 2500;
   const titleLower = (config.title || '').toLowerCase();

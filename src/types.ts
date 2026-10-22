@@ -17,6 +17,7 @@ export interface CustomEventItem {
   intakeMl?: number;
   color?: string;
   category?: string;
+  message?: string;
 }
 
 export interface TimerConfig {
@@ -39,6 +40,7 @@ export interface TimerConfig {
   dailyGoalMl: number;
   customEvents: CustomEventItem[]; // Maximum 6 events
   activeDays: boolean[]; // Array of 7 booleans (index 0 = Sunday)
+  message?: string;
 }
 
 export interface ActivityLog {
