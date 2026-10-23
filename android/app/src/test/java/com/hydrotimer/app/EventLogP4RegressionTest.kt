@@ -98,7 +98,9 @@ class EventLogP4RegressionTest {
         )
         repository.createIfAbsent(event)
 
-        // Simulate app restart / new repo instance
+        // Close dbHelper and reopen database
+        dbHelper.close()
+
         val reloadedHelper = HydrationEventDatabaseHelper(context, "hydro_timer_events_p4.db")
         val reloadedRepo = HydrationEventRepository(reloadedHelper)
         val pending = reloadedRepo.listPending()
@@ -116,33 +118,46 @@ class EventLogP4RegressionTest {
 
     // 3. Repeated alerts and idempotency
     @Test
-    fun test3_reprocessingDuplicateAlertPreservesOriginalEventIdentityAndSnapshot() {
+    fun test3_duplicateTimerTriggerDispatchCreatesSingleRecordAndPreservesSnapshot() {
         val waitingSnap = TimerSnapshot(state = TimerState.WAITING, timerGeneration = 1L, nextTriggerAt = fixedNow)
         timerManager.saveSnapshot(waitingSnap)
 
-        val triggerEvent = TimerEvent(type = TimerEventType.TIMER_TRIGGER, timerGeneration = 1L, scheduledAt = fixedNow, timestamp = fixedNow)
-        timerManager.dispatch(triggerEvent, fixedNow)
+        val triggerEvent1 = TimerEvent(type = TimerEventType.TIMER_TRIGGER, timerGeneration = 1L, scheduledAt = fixedNow, timestamp = fixedNow)
+        timerManager.dispatch(triggerEvent1, fixedNow)
 
         val saved1 = repository.getById("1_1001")
         assertNotNull(saved1)
+        val originalCreatedAt = saved1?.createdAt
         assertEquals(HydrationEventStatus.PENDING, saved1?.status)
         assertEquals(250, saved1?.intakeMl)
         assertEquals(2500, saved1?.dailyGoalMl)
 
+        // Duplicate TIMER_TRIGGER dispatch for same alert / generation
+        val triggerEvent2 = TimerEvent(type = TimerEventType.TIMER_TRIGGER, timerGeneration = 1L, scheduledAt = fixedNow, timestamp = fixedNow + 500L)
+        timerManager.dispatch(triggerEvent2, fixedNow + 500L)
+
+        // Assert exactly 1 record exists, ID & createdAt unchanged, snapshot preserved
+        val pendingList = repository.listPending()
+        assertEquals(1, pendingList.size)
+
+        val saved2 = repository.getById("1_1001")
+        assertEquals("1_1001", saved2?.id)
+        assertEquals(originalCreatedAt, saved2?.createdAt)
+        assertEquals(HydrationEventStatus.PENDING, saved2?.status)
+        assertEquals(250, saved2?.intakeMl)
+        assertEquals(2500, saved2?.dailyGoalMl)
+
         // Recovery dispatch
         timerManager.dispatch(TimerEvent(type = TimerEventType.RECOVER, timestamp = fixedNow + 1000L), fixedNow + 1000L)
 
-        val saved2 = repository.getById("1_1001")
-        assertEquals(saved1?.createdAt, saved2?.createdAt)
-        assertEquals(saved1?.intakeMl, saved2?.intakeMl)
-
-        val pendingList = repository.listPending()
-        assertEquals(1, pendingList.size)
+        val saved3 = repository.getById("1_1001")
+        assertEquals(originalCreatedAt, saved3?.createdAt)
+        assertEquals(250, saved3?.intakeMl)
     }
 
     // 4. Timer lifecycle
     @Test
-    fun test4_stopRestartIncrementsGenerationAndSettingsUpdateDoesNotCorruptHistory() {
+    fun test4_stopRestartIncrementsGenerationAndRejectsStaleActions() {
         val activeSnap = TimerSnapshot(
             state = TimerState.ALERT_ACTIVE,
             timerGeneration = 1L,
@@ -168,9 +183,118 @@ class EventLogP4RegressionTest {
         assertEquals(2L, staleAck.newSnapshot.timerGeneration)
     }
 
+    @Test
+    fun test4b_changingTimerSettingsBeforeFutureAlertAffectsFutureAlertSnapshotNotExistingRecord() {
+        val waitingSnap = TimerSnapshot(state = TimerState.WAITING, timerGeneration = 1L, nextTriggerAt = fixedNow)
+        timerManager.saveSnapshot(waitingSnap)
+
+        // Alert 1 triggered with default config (250ml intake, 2500ml daily goal)
+        val trigger1 = TimerEvent(type = TimerEventType.TIMER_TRIGGER, timerGeneration = 1L, scheduledAt = fixedNow, timestamp = fixedNow)
+        timerManager.dispatch(trigger1, fixedNow)
+
+        // User acknowledges alert 1
+        val ack1 = TimerEvent(type = TimerEventType.ACKNOWLEDGE, timerGeneration = 1L, alertId = 1001L, timestamp = fixedNow + 5000L)
+        val ackRes = timerManager.dispatch(ack1, fixedNow + 5000L)
+
+        // User updates settings via TimerManager to 500ml intake and 4000ml daily goal
+        timerManager.setIntakePerAlertMl(500)
+        timerManager.setDailyTargetMl(4000)
+
+        // Alert 2 triggered
+        val nextTriggerAt = ackRes.newSnapshot.nextTriggerAt!!
+        val trigger2 = TimerEvent(type = TimerEventType.TIMER_TRIGGER, timerGeneration = 1L, scheduledAt = nextTriggerAt, timestamp = nextTriggerAt)
+        timerManager.dispatch(trigger2, nextTriggerAt)
+
+        // Verify earlier event retained original snapshot, later event captured new config
+        val record1 = repository.getById("1_1001")
+        val record2 = repository.getById("1_1002")
+
+        assertNotNull(record1)
+        assertNotNull(record2)
+        assertEquals(250, record1?.intakeMl)
+        assertEquals(2500, record1?.dailyGoalMl)
+
+        assertEquals(500, record2?.intakeMl)
+        assertEquals(4000, record2?.dailyGoalMl)
+
+        // Verify recovery does not overwrite either snapshot
+        timerManager.dispatch(TimerEvent(type = TimerEventType.RECOVER, timestamp = nextTriggerAt + 1000L), nextTriggerAt + 1000L)
+
+        val record1AfterRecover = repository.getById("1_1001")
+        val record2AfterRecover = repository.getById("1_1002")
+
+        assertEquals(250, record1AfterRecover?.intakeMl)
+        assertEquals(2500, record1AfterRecover?.dailyGoalMl)
+        assertEquals(500, record2AfterRecover?.intakeMl)
+        assertEquals(4000, record2AfterRecover?.dailyGoalMl)
+    }
+
     // 5. Application restart and persistence
     @Test
-    fun test5_legacyRecordWithoutSnapshotFieldsReturnsNullSnapshot() {
+    fun test5_realPersistenceAcrossDatabaseCloseAndReopen() {
+        val event = HydrationEvent.createPending(
+            timerGeneration = 1L,
+            alertId = 1001L,
+            scheduledAt = fixedNow,
+            createdAt = fixedNow,
+            intakeMl = 300,
+            dailyGoalMl = 3000
+        )
+        repository.createIfAbsent(event)
+        repository.updateStatus("1_1001", HydrationEventStatus.DRANK, fixedNow + 1000L)
+
+        // Explicitly close database helper
+        dbHelper.close()
+
+        // Reopen database with same name
+        val reopenedHelper = HydrationEventDatabaseHelper(context, "hydro_timer_events_p4.db")
+        val reopenedRepo = HydrationEventRepository(reopenedHelper)
+
+        val retrieved = reopenedRepo.getById("1_1001")
+        assertNotNull(retrieved)
+        assertEquals("1_1001", retrieved?.id)
+        assertEquals(HydrationEventStatus.DRANK, retrieved?.status)
+        assertEquals(fixedNow, retrieved?.scheduledAt)
+        assertEquals(fixedNow, retrieved?.createdAt)
+        assertEquals(fixedNow + 1000L, retrieved?.updatedAt)
+        assertEquals(300, retrieved?.intakeMl)
+        assertEquals(3000, retrieved?.dailyGoalMl)
+
+        reopenedHelper.close()
+    }
+
+    @Test
+    fun test5b_activeAlertRecoveryAfterDatabaseReopenPreservesSnapshotWithoutDuplicates() {
+        val waitingSnap = TimerSnapshot(state = TimerState.WAITING, timerGeneration = 1L, nextTriggerAt = fixedNow)
+        timerManager.saveSnapshot(waitingSnap)
+
+        // Alert triggered
+        val trigger = TimerEvent(type = TimerEventType.TIMER_TRIGGER, timerGeneration = 1L, scheduledAt = fixedNow, timestamp = fixedNow)
+        timerManager.dispatch(trigger, fixedNow)
+
+        // Close db connection
+        dbHelper.close()
+
+        // Simulate app restart / reopen DB while alert is active
+        val reopenedHelper = HydrationEventDatabaseHelper(context, "hydro_timer_events_p4.db")
+        val reopenedRepo = HydrationEventRepository(reopenedHelper)
+        val reopenedManager = TimerManager(context, reopenedRepo, directExecutor)
+
+        // Recover active alert
+        reopenedManager.dispatch(TimerEvent(type = TimerEventType.RECOVER, timestamp = fixedNow + 2000L), fixedNow + 2000L)
+
+        val pending = reopenedRepo.listPending()
+        assertEquals(1, pending.size)
+
+        val record = reopenedRepo.getById("1_1001")
+        assertEquals(250, record?.intakeMl)
+        assertEquals(2500, record?.dailyGoalMl)
+
+        reopenedHelper.close()
+    }
+
+    @Test
+    fun test5c_legacyRecordWithoutSnapshotFieldsReturnsNullSnapshot() {
         val legacy = HydrationEvent(
             id = "1_900",
             timerGeneration = 1L,
@@ -185,11 +309,17 @@ class EventLogP4RegressionTest {
         )
 
         repository.createIfAbsent(legacy)
+        dbHelper.close()
 
-        val fetched = repository.getById("1_900")
+        val reopenedHelper = HydrationEventDatabaseHelper(context, "hydro_timer_events_p4.db")
+        val reopenedRepo = HydrationEventRepository(reopenedHelper)
+
+        val fetched = reopenedRepo.getById("1_900")
         assertNotNull(fetched)
         assertNull(fetched?.intakeMl)
         assertNull(fetched?.dailyGoalMl)
+
+        reopenedHelper.close()
     }
 
     // 6. Regression boundaries

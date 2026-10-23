@@ -112,7 +112,10 @@ describe('Event Log P4 Comprehensive Cross-Platform Regression Suite (Web)', () 
       });
       await eventRepo.createIfAbsent(event);
 
-      // Reload repo / view history
+      // Explicitly close repository
+      eventRepo.close();
+
+      // Reopen repo with same database
       const reloadedRepo = new HydrationEventRepository(dbName);
       const pendingList = await reloadedRepo.listPending();
       expect(pendingList.length).toBe(1);
@@ -130,8 +133,8 @@ describe('Event Log P4 Comprehensive Cross-Platform Regression Suite (Web)', () 
   });
 
   // 3. Repeated alerts and idempotency
-  describe('3. Repeated alerts, recovery idempotency, and snapshot preservation', () => {
-    test('Reprocessing duplicate trigger or recovery preserves event identity and immutable snapshot', async () => {
+  describe('3. Repeated alerts, duplicate-trigger idempotency, and snapshot preservation', () => {
+    test('Duplicate TIMER_TRIGGER processing for same alert creates exactly one record and preserves snapshot', async () => {
       const triggerEvent: TimerEvent = {
         type: 'TIMER_TRIGGER',
         timerGeneration: 1,
@@ -149,23 +152,45 @@ describe('Event Log P4 Comprehensive Cross-Platform Regression Suite (Web)', () 
         alertDeadlineAt: null,
       };
 
+      // First TIMER_TRIGGER processing
       const res1 = TimerDomainEngine.processEvent(initialSnapshot, triggerEvent, DEFAULT_CONFIG, fixedNow);
       await processTimerEffects(res1.effects, { eventRepository: eventRepo });
 
       const record1 = await eventRepo.getById('1_1001');
       expect(record1).not.toBeNull();
+      const originalCreatedAt = record1?.createdAt;
       expect(record1?.intakeMl).toBe(250);
       expect(record1?.dailyGoalMl).toBe(2500);
 
-      // Recovery call while alert is active
-      const recoverEvent: TimerEvent = { type: 'RECOVER', timestamp: fixedNow + 1000 };
-      const res2 = TimerDomainEngine.processEvent(res1.newSnapshot, recoverEvent, DEFAULT_CONFIG, fixedNow + 1000);
+      // Second TIMER_TRIGGER processing for same logical alert / generation
+      const duplicateTrigger: TimerEvent = {
+        type: 'TIMER_TRIGGER',
+        timerGeneration: 1,
+        scheduledAt: fixedNow,
+        timestamp: fixedNow + 500,
+      };
+      const res2 = TimerDomainEngine.processEvent(res1.newSnapshot, duplicateTrigger, DEFAULT_CONFIG, fixedNow + 500);
       await processTimerEffects(res2.effects, { eventRepository: eventRepo });
 
+      // Verify exactly one record exists, ID & createdAt unchanged, snapshot preserved
+      const pendingList = await eventRepo.listPending();
+      expect(pendingList.length).toBe(1);
+
       const record2 = await eventRepo.getById('1_1001');
-      expect(record2?.createdAt).toBe(record1?.createdAt);
+      expect(record2?.id).toBe('1_1001');
+      expect(record2?.createdAt).toBe(originalCreatedAt);
       expect(record2?.status).toBe('PENDING');
       expect(record2?.intakeMl).toBe(250);
+      expect(record2?.dailyGoalMl).toBe(2500);
+
+      // Recovery call while alert is active
+      const recoverEvent: TimerEvent = { type: 'RECOVER', timestamp: fixedNow + 1000 };
+      const resRecover = TimerDomainEngine.processEvent(res2.newSnapshot, recoverEvent, DEFAULT_CONFIG, fixedNow + 1000);
+      await processTimerEffects(resRecover.effects, { eventRepository: eventRepo });
+
+      const recordAfterRecover = await eventRepo.getById('1_1001');
+      expect(recordAfterRecover?.createdAt).toBe(originalCreatedAt);
+      expect(recordAfterRecover?.status).toBe('PENDING');
 
       const allPending = await eventRepo.listPending();
       expect(allPending.length).toBe(1);
@@ -206,7 +231,7 @@ describe('Event Log P4 Comprehensive Cross-Platform Regression Suite (Web)', () 
   });
 
   // 4. Timer lifecycle
-  describe('4. Timer lifecycle isolation', () => {
+  describe('4. Timer lifecycle isolation & settings changes', () => {
     test('Stopping and restarting timer increments generation so old alert cannot be associated with new generation', async () => {
       const activeSnapshot: TimerSnapshot = {
         state: 'ALERT_ACTIVE',
@@ -239,17 +264,35 @@ describe('Event Log P4 Comprehensive Cross-Platform Regression Suite (Web)', () 
     });
 
     test('Changing timer settings before future alert affects future alert snapshot, not existing history record', async () => {
-      const e1 = createPendingHydrationEvent({ timerGeneration: 1, alertId: 1001, scheduledAt: fixedNow, intakeMl: 250, dailyGoalMl: 2500 });
-      await eventRepo.createIfAbsent(e1);
+      const initialSnapshot: TimerSnapshot = {
+        state: 'WAITING',
+        timerGeneration: 1,
+        alertId: null,
+        lastAlertId: 1000,
+        nextTriggerAt: fixedNow,
+        alertStartedAt: null,
+        alertDeadlineAt: null,
+      };
 
+      // Alert 1 created with initial config (250ml intake, 2500ml daily goal)
+      const trigger1: TimerEvent = { type: 'TIMER_TRIGGER', timerGeneration: 1, scheduledAt: fixedNow, timestamp: fixedNow };
+      const res1 = TimerDomainEngine.processEvent(initialSnapshot, trigger1, DEFAULT_CONFIG, fixedNow);
+      await processTimerEffects(res1.effects, { eventRepository: eventRepo });
+
+      // User resolves alert 1
+      const ack1: TimerEvent = { type: 'ACKNOWLEDGE', timerGeneration: 1, alertId: 1001, timestamp: fixedNow + 5000 };
+      const resAck = TimerDomainEngine.processEvent(res1.newSnapshot, ack1, DEFAULT_CONFIG, fixedNow + 5000);
+
+      // User updates settings to 500ml intake and 4000ml daily goal
       const updatedConfig: EngineConfig = { ...DEFAULT_CONFIG, intakePerAlertMl: 500, dailyGoalMl: 4000 };
 
-      const trigger2: TimerEvent = { type: 'TIMER_TRIGGER', timerGeneration: 1, scheduledAt: fixedNow + 1800000, timestamp: fixedNow + 1800000 };
-      const snapshotWaiting: TimerSnapshot = { state: 'WAITING', timerGeneration: 1, alertId: null, lastAlertId: 1001, nextTriggerAt: fixedNow + 1800000, alertStartedAt: null, alertDeadlineAt: null };
-
-      const res2 = TimerDomainEngine.processEvent(snapshotWaiting, trigger2, updatedConfig, fixedNow + 1800000);
+      // Alert 2 arrives
+      const nextTriggerAt = resAck.newSnapshot.nextTriggerAt!;
+      const trigger2: TimerEvent = { type: 'TIMER_TRIGGER', timerGeneration: 1, scheduledAt: nextTriggerAt, timestamp: nextTriggerAt };
+      const res2 = TimerDomainEngine.processEvent(resAck.newSnapshot, trigger2, updatedConfig, nextTriggerAt);
       await processTimerEffects(res2.effects, { eventRepository: eventRepo });
 
+      // Verify earlier event retains original snapshot, later event captures new config
       const record1 = await eventRepo.getById('1_1001');
       const record2 = await eventRepo.getById('1_1002');
 
@@ -258,11 +301,90 @@ describe('Event Log P4 Comprehensive Cross-Platform Regression Suite (Web)', () 
 
       expect(record2?.intakeMl).toBe(500);
       expect(record2?.dailyGoalMl).toBe(4000);
+
+      // Verify recovery or repeated processing does not overwrite either snapshot
+      const recoverEvent: TimerEvent = { type: 'RECOVER', timestamp: nextTriggerAt + 1000 };
+      const resRecover = TimerDomainEngine.processEvent(res2.newSnapshot, recoverEvent, updatedConfig, nextTriggerAt + 1000);
+      await processTimerEffects(resRecover.effects, { eventRepository: eventRepo });
+
+      const record1AfterRecover = await eventRepo.getById('1_1001');
+      const record2AfterRecover = await eventRepo.getById('1_1002');
+
+      expect(record1AfterRecover?.intakeMl).toBe(250);
+      expect(record1AfterRecover?.dailyGoalMl).toBe(2500);
+      expect(record2AfterRecover?.intakeMl).toBe(500);
+      expect(record2AfterRecover?.dailyGoalMl).toBe(4000);
     });
   });
 
   // 5. Application restart and persistence
-  describe('5. Application restart, active alert recovery, and legacy compatibility', () => {
+  describe('5. Application restart, real database close/reopen, and legacy compatibility', () => {
+    test('Real persistence across repository close and reopen preserves event identity, status, and snapshot', async () => {
+      const event = createPendingHydrationEvent({
+        timerGeneration: 1,
+        alertId: 1001,
+        scheduledAt: fixedNow,
+        createdAt: fixedNow,
+        intakeMl: 300,
+        dailyGoalMl: 3000,
+      });
+      await eventRepo.createIfAbsent(event);
+      await eventRepo.updateStatus('1_1001', 'DRANK', fixedNow + 1000);
+
+      // Close current repository connection
+      eventRepo.close();
+
+      // Reopen repository with same database name
+      const reopenedRepo = new HydrationEventRepository(dbName);
+      const retrieved = await reopenedRepo.getById('1_1001');
+
+      expect(retrieved).not.toBeNull();
+      expect(retrieved?.id).toBe('1_1001');
+      expect(retrieved?.status).toBe('DRANK');
+      expect(retrieved?.scheduledAt).toBe(fixedNow);
+      expect(retrieved?.createdAt).toBe(fixedNow);
+      expect(retrieved?.updatedAt).toBe(fixedNow + 1000);
+      expect(retrieved?.intakeMl).toBe(300);
+      expect(retrieved?.dailyGoalMl).toBe(3000);
+
+      reopenedRepo.close();
+    });
+
+    test('Active-alert recovery after database close/reopen preserves original snapshot without duplicate records', async () => {
+      const trigger1: TimerEvent = { type: 'TIMER_TRIGGER', timerGeneration: 1, scheduledAt: fixedNow, timestamp: fixedNow };
+      const initialSnapshot: TimerSnapshot = {
+        state: 'WAITING',
+        timerGeneration: 1,
+        alertId: null,
+        lastAlertId: 1000,
+        nextTriggerAt: fixedNow,
+        alertStartedAt: null,
+        alertDeadlineAt: null,
+      };
+
+      const res1 = TimerDomainEngine.processEvent(initialSnapshot, trigger1, DEFAULT_CONFIG, fixedNow);
+      await processTimerEffects(res1.effects, { eventRepository: eventRepo });
+
+      // Close repository
+      eventRepo.close();
+
+      // App restarts / reopens DB while alert is active
+      const reopenedRepo = new HydrationEventRepository(dbName);
+
+      const recoverEvent: TimerEvent = { type: 'RECOVER', timestamp: fixedNow + 2000 };
+      const resRecover = TimerDomainEngine.processEvent(res1.newSnapshot, recoverEvent, DEFAULT_CONFIG, fixedNow + 2000);
+      await processTimerEffects(resRecover.effects, { eventRepository: reopenedRepo });
+
+      const pending = await reopenedRepo.listPending();
+      expect(pending.length).toBe(1);
+
+      const record = await reopenedRepo.getById('1_1001');
+      expect(record?.intakeMl).toBe(250);
+      expect(record?.dailyGoalMl).toBe(2500);
+
+      reopenedRepo.close();
+    });
+
     test('Legacy records without intakeMl / dailyGoalMl remain readable without fabricated default values', async () => {
       const legacyRaw = {
         id: '1_900',
@@ -276,10 +398,15 @@ describe('Event Log P4 Comprehensive Cross-Platform Regression Suite (Web)', () 
 
       await eventRepo.createIfAbsent(legacyRaw as HydrationEvent);
 
-      const retrieved = await eventRepo.getById('1_900');
+      eventRepo.close();
+
+      const reopenedRepo = new HydrationEventRepository(dbName);
+      const retrieved = await reopenedRepo.getById('1_900');
       expect(retrieved).not.toBeNull();
       expect(retrieved?.intakeMl).toBeUndefined();
       expect(retrieved?.dailyGoalMl).toBeUndefined();
+
+      reopenedRepo.close();
     });
   });
 
