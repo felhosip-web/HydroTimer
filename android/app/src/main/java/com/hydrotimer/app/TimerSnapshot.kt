@@ -9,5 +9,7 @@ data class TimerSnapshot(
     val alertStartedAt: Long? = null,
     val alertDeadlineAt: Long? = null,
     val alertScheduledAt: Long? = null,
-    val isTestAlert: Boolean = false
+    val isTestAlert: Boolean = false,
+    val intakeMl: Int? = null,
+    val dailyGoalMl: Int? = null
 )

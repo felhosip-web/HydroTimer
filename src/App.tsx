@@ -20,6 +20,7 @@ import {
   BluetoothDeviceState,
   CustomEventItem,
   TimerMode,
+  PresetId,
 } from './types';
 import { soundHaptics } from './services/soundHaptics';
 import { bluetoothWatch } from './services/bluetoothWatch';
@@ -30,6 +31,7 @@ import { QuickSettingsModal } from './components/QuickSettingsModal';
 import { NativeCodeViewer } from './components/NativeCodeViewer';
 import { CompatibilityGuideModal } from './components/CompatibilityGuideModal';
 import { useTimerController } from './hooks/useTimerController';
+import { getNotificationBodyForConfig } from './utils/notificationUtils';
 
 const DEFAULT_CUSTOM_EVENTS: CustomEventItem[] = [
   {
@@ -115,6 +117,7 @@ const DEFAULT_CONFIG: TimerConfig = {
   customEvents: DEFAULT_CUSTOM_EVENTS,
   activeDays: [true, true, true, true, true, true, true],
 };
+
 
 export default function App() {
   const [config, setConfig] = useState<TimerConfig>(() => {
@@ -228,14 +231,16 @@ export default function App() {
     setLogs((prev) => [missedLog, ...prev]);
   }, [config.presetId, config.title, config.mode]);
 
-  const handleShowReminder = useCallback(() => {
+  const handleShowReminder = useCallback((_gen: number, _alertId: number, intakeMl?: number, dailyGoalMl?: number) => {
     const inQuietHours = isCurrentlyInQuietHours();
+    const notificationBody = getNotificationBodyForConfig(config, intakeMl, dailyGoalMl);
+
     if (!inQuietHours) {
       soundHaptics.playAlertSound(config.soundType);
       soundHaptics.triggerVibration(config.vibrationPattern);
       soundHaptics.sendSystemNotification(
         `⏰ ${config.title} Jelzés!`,
-        `Nyugtázási időablak: ${Math.max(5, config.alertDurationSeconds || 15)} másodperc áll rendelkezésre!`
+        notificationBody
       );
     }
 
@@ -352,7 +357,9 @@ export default function App() {
     const wasRunning = timerController.isRunning;
     const newConfig: TimerConfig = {
       ...config,
+      presetId: event.id as PresetId,
       title: event.title,
+      message: event.message,
       intervalMinutes: event.intervalMinutes,
       alertDurationSeconds: Math.max(5, event.alertDurationSeconds || 15),
       soundType: event.soundType,

@@ -26,6 +26,10 @@ export class TimerRepository {
         nextTriggerAt: typeof parsed.nextTriggerAt === 'number' ? parsed.nextTriggerAt : null,
         alertStartedAt: typeof parsed.alertStartedAt === 'number' ? parsed.alertStartedAt : null,
         alertDeadlineAt: typeof parsed.alertDeadlineAt === 'number' ? parsed.alertDeadlineAt : null,
+        alertScheduledAt: typeof parsed.alertScheduledAt === 'number' ? parsed.alertScheduledAt : null,
+        isTestAlert: typeof parsed.isTestAlert === 'boolean' ? parsed.isTestAlert : false,
+        intakeMl: typeof parsed.intakeMl === 'number' ? parsed.intakeMl : null,
+        dailyGoalMl: typeof parsed.dailyGoalMl === 'number' ? parsed.dailyGoalMl : null,
       };
     } catch {
       return { ...DEFAULT_SNAPSHOT };

@@ -6,9 +6,11 @@
     <string name="missed_channel_desc">Figyelmeztető értesítések ha a jelzés nem került nyugtázásra</string>
     <string name="reminder_title">💧 Ideje inni egy pohár vizet!</string>
     <string name="reminder_body">Frissítsd fel a szervezeted 2.5 dl tiszta vízzel.</string>
+    <string name="reminder_body_snapshot">Ideje inni: %1$d ml víz. Napi cél: %2$d ml.</string>
     <string name="missed_alert_title">⚠️ Elmulasztott jelzés!</string>
     <string name="missed_alert_body">Nem érkezett nyugtázás %1$d mp-en belül. A következő időszakasz automatikusan elindult!</string>
     <string name="action_drink">Megittam (+250ml)</string>
+    <string name="action_drink_amount">Megittam (+%1$dml)</string>
     <string name="action_acknowledge">Nyugtázás</string>
     <string name="action_snooze">10 perc múlva</string>
     <string name="status_running">Időzítő aktív</string>

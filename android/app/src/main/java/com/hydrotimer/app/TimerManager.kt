@@ -104,6 +104,8 @@ class TimerManager(
         val alertDeadline = if (prefs.contains(KEY_ALERT_DEADLINE_TIMESTAMP)) prefs.getLong(KEY_ALERT_DEADLINE_TIMESTAMP, 0L).let { if (it <= 0L) null else it } else null
         val alertScheduled = if (prefs.contains(KEY_ALERT_SCHEDULED_TIMESTAMP)) prefs.getLong(KEY_ALERT_SCHEDULED_TIMESTAMP, 0L).let { if (it <= 0L) null else it } else null
         val isTestAlert = prefs.getBoolean(KEY_IS_TEST_ALERT, false)
+        val intakeMl = if (prefs.contains("snapshot_intake_ml")) prefs.getInt("snapshot_intake_ml", 0) else null
+        val dailyGoalMl = if (prefs.contains("snapshot_daily_goal_ml")) prefs.getInt("snapshot_daily_goal_ml", 0) else null
 
         return TimerSnapshot(
             state = state,
@@ -114,7 +116,9 @@ class TimerManager(
             alertStartedAt = alertStarted,
             alertDeadlineAt = alertDeadline,
             alertScheduledAt = alertScheduled,
-            isTestAlert = isTestAlert
+            isTestAlert = isTestAlert,
+            intakeMl = intakeMl,
+            dailyGoalMl = dailyGoalMl
         )
     }
 
@@ -129,6 +133,8 @@ class TimerManager(
         if (snapshot.alertDeadlineAt != null) editor.putLong(KEY_ALERT_DEADLINE_TIMESTAMP, snapshot.alertDeadlineAt) else editor.remove(KEY_ALERT_DEADLINE_TIMESTAMP)
         if (snapshot.alertScheduledAt != null) editor.putLong(KEY_ALERT_SCHEDULED_TIMESTAMP, snapshot.alertScheduledAt) else editor.remove(KEY_ALERT_SCHEDULED_TIMESTAMP)
         if (snapshot.isTestAlert) editor.putBoolean(KEY_IS_TEST_ALERT, true) else editor.remove(KEY_IS_TEST_ALERT)
+        if (snapshot.intakeMl != null) editor.putInt("snapshot_intake_ml", snapshot.intakeMl) else editor.remove("snapshot_intake_ml")
+        if (snapshot.dailyGoalMl != null) editor.putInt("snapshot_daily_goal_ml", snapshot.dailyGoalMl) else editor.remove("snapshot_daily_goal_ml")
 
         editor.putBoolean(KEY_IS_RUNNING, snapshot.state != TimerState.STOPPED)
         editor.commit()
@@ -145,6 +151,7 @@ class TimerManager(
             clockIntervalMinutes = getClockIntervalMinutes(),
             autoRestart = true,
             intakePerAlertMl = getIntakePerAlertMl(),
+            dailyGoalMl = getDailyTargetMl(),
             quietHoursEnabled = isQuietHoursEnabled(),
             quietHoursStart = getQuietHoursStart(),
             quietHoursEnd = getQuietHoursEnd(),
@@ -168,7 +175,7 @@ class TimerManager(
                 is TimerEffect.ScheduleAlertTimeout -> scheduleAlertTimeoutAt(effect.deadlineAtMillis, effect.timerGeneration, effect.alertId)
                 is TimerEffect.CancelTimer -> cancelAlarm(effect.timerGeneration)
                 is TimerEffect.CancelAlertTimeout -> cancelAlertTimeout(effect.timerGeneration, effect.alertId)
-                is TimerEffect.ShowReminder -> NotificationHelper.showWaterReminder(context, effect.title, effect.body, effect.timerGeneration, effect.alertId)
+                is TimerEffect.ShowReminder -> NotificationHelper.showWaterReminder(context, effect.title, effect.body, effect.timerGeneration, effect.alertId, effect.intakeMl, effect.dailyGoalMl)
                 is TimerEffect.CancelReminder -> NotificationHelper.cancelAlertNotifications(context)
                 is TimerEffect.ShowMissedNotification -> NotificationHelper.showMissedAlertNotification(context, effect.alertDurationSeconds)
                 is TimerEffect.RecordDrink -> addDrunkMl(effect.amountMl)
@@ -181,7 +188,9 @@ class TimerManager(
                     val pendingEvent = HydrationEvent.createPending(
                         timerGeneration = effect.timerGeneration,
                         alertId = effect.alertId,
-                        scheduledAt = effect.scheduledAt
+                        scheduledAt = effect.scheduledAt,
+                        intakeMl = effect.intakeMl,
+                        dailyGoalMl = effect.dailyGoalMl
                     )
                     executor.execute {
                         try {

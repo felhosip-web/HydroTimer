@@ -34,6 +34,7 @@ const baseConfig: EngineConfig = {
   clockIntervalMinutes: 30,
   autoRestart: true,
   intakePerAlertMl: 250,
+  dailyGoalMl: 2500,
   quietHoursEnabled: false,
   quietHoursStart: '23:00',
   quietHoursEnd: '07:00',

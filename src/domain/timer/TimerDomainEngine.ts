@@ -166,6 +166,9 @@ export class TimerDomainEngine {
     const nextTriggerAt = shouldAutoRestart ? calculateNextTriggerAt(now, config) : null;
     const scheduledAt = event.scheduledAt ?? snapshot.nextTriggerAt ?? now;
 
+    const intakeMl = config.intakePerAlertMl;
+    const dailyGoalMl = config.dailyGoalMl;
+
     const newSnapshot: TimerSnapshot = {
       ...snapshot,
       state: 'ALERT_ACTIVE',
@@ -176,6 +179,8 @@ export class TimerDomainEngine {
       alertScheduledAt: scheduledAt,
       nextTriggerAt,
       isTestAlert: false,
+      intakeMl,
+      dailyGoalMl,
     };
 
     const effects: TimerEffect[] = [
@@ -185,6 +190,8 @@ export class TimerDomainEngine {
         timerGeneration: snapshot.timerGeneration,
         alertId: nextAlertId,
         scheduledAt,
+        intakeMl,
+        dailyGoalMl,
       },
       {
         type: 'ShowReminder',
@@ -192,6 +199,8 @@ export class TimerDomainEngine {
         body: null,
         timerGeneration: snapshot.timerGeneration,
         alertId: nextAlertId,
+        intakeMl,
+        dailyGoalMl,
       },
       {
         type: 'ScheduleAlertTimeout',
@@ -309,7 +318,7 @@ export class TimerDomainEngine {
     }
 
     const activeAlertId = snapshot.alertId;
-    const intake = Math.max(0, config.intakePerAlertMl);
+    const intake = Math.max(0, snapshot.intakeMl ?? config.intakePerAlertMl);
     const shouldAutoRestart = config.mode !== 'countdown' || config.autoRestart !== false;
 
     if (!shouldAutoRestart) {
@@ -452,6 +461,9 @@ export class TimerDomainEngine {
     if (snapshot.state === 'STOPPED') {
       const nextGen = snapshot.timerGeneration + 1;
       const nextTriggerAt = calculateNextTriggerAt(now, config);
+      const intakeMl = config.intakePerAlertMl;
+      const dailyGoalMl = config.dailyGoalMl;
+
       const newSnapshot: TimerSnapshot = {
         state: 'ALERT_ACTIVE',
         timerGeneration: nextGen,
@@ -462,6 +474,8 @@ export class TimerDomainEngine {
         alertDeadlineAt,
         alertScheduledAt: null,
         isTestAlert: true,
+        intakeMl,
+        dailyGoalMl,
       };
 
       const effects: TimerEffect[] = [
@@ -472,6 +486,8 @@ export class TimerDomainEngine {
           body: null,
           timerGeneration: nextGen,
           alertId: nextAlertId,
+          intakeMl,
+          dailyGoalMl,
         },
         {
           type: 'ScheduleAlertTimeout',
@@ -489,6 +505,9 @@ export class TimerDomainEngine {
       return { newSnapshot, effects };
     } else {
       // WAITING state: keep existing timerGeneration and nextTriggerAt
+      const intakeMl = config.intakePerAlertMl;
+      const dailyGoalMl = config.dailyGoalMl;
+
       const newSnapshot: TimerSnapshot = {
         ...snapshot,
         state: 'ALERT_ACTIVE',
@@ -498,6 +517,8 @@ export class TimerDomainEngine {
         alertDeadlineAt,
         alertScheduledAt: null,
         isTestAlert: true,
+        intakeMl,
+        dailyGoalMl,
       };
 
       const effects: TimerEffect[] = [
@@ -508,6 +529,8 @@ export class TimerDomainEngine {
           body: null,
           timerGeneration: snapshot.timerGeneration,
           alertId: nextAlertId,
+          intakeMl,
+          dailyGoalMl,
         },
         {
           type: 'ScheduleAlertTimeout',
@@ -590,6 +613,8 @@ export class TimerDomainEngine {
               timerGeneration: snapshot.timerGeneration,
               alertId: activeAlertId,
               scheduledAt: snapshot.alertScheduledAt,
+              intakeMl: snapshot.intakeMl ?? undefined,
+              dailyGoalMl: snapshot.dailyGoalMl ?? undefined,
             });
           }
 
@@ -600,6 +625,8 @@ export class TimerDomainEngine {
               body: null,
               timerGeneration: snapshot.timerGeneration,
               alertId: activeAlertId,
+              intakeMl: snapshot.intakeMl ?? undefined,
+              dailyGoalMl: snapshot.dailyGoalMl ?? undefined,
             },
             {
               type: 'ScheduleAlertTimeout',

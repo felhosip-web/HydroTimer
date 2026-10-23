@@ -17,6 +17,10 @@ export interface HydrationEvent {
   updatedAt: number;
   /** Optional version field for optimistic locking / schema evolution */
   revision?: number;
+  /** Configured per-reminder water amount in millilitres */
+  intakeMl?: number;
+  /** Configured daily hydration goal in millilitres */
+  dailyGoalMl?: number;
 }
 
 /**
@@ -32,6 +36,8 @@ export interface CreatePendingEventParams {
   alertId: number;
   scheduledAt: number;
   createdAt?: number;
+  intakeMl?: number;
+  dailyGoalMl?: number;
 }
 
 /**
@@ -48,5 +54,7 @@ export function createPendingHydrationEvent(params: CreatePendingEventParams): H
     status: 'PENDING',
     updatedAt: createdAt,
     revision: 1,
+    intakeMl: params.intakeMl,
+    dailyGoalMl: params.dailyGoalMl,
   };
 }

@@ -24,6 +24,8 @@ open class HydrationEventRepository(private val dbHelper: HydrationEventDatabase
             put(HydrationEventDatabaseHelper.COLUMN_STATUS, event.status.name)
             put(HydrationEventDatabaseHelper.COLUMN_UPDATED_AT, event.updatedAt)
             put(HydrationEventDatabaseHelper.COLUMN_REVISION, event.revision)
+            if (event.intakeMl != null) put(HydrationEventDatabaseHelper.COLUMN_INTAKE_ML, event.intakeMl) else putNull(HydrationEventDatabaseHelper.COLUMN_INTAKE_ML)
+            if (event.dailyGoalMl != null) put(HydrationEventDatabaseHelper.COLUMN_DAILY_GOAL_ML, event.dailyGoalMl) else putNull(HydrationEventDatabaseHelper.COLUMN_DAILY_GOAL_ML)
         }
 
         val rowId = db.insertWithOnConflict(
@@ -194,6 +196,12 @@ open class HydrationEventRepository(private val dbHelper: HydrationEventDatabase
             throw IllegalStateException("Invalid or corrupted HydrationEventStatus '$statusStr' for event id '$id'.", e)
         }
 
+        val intakeMlIndex = cursor.getColumnIndex(HydrationEventDatabaseHelper.COLUMN_INTAKE_ML)
+        val intakeMl = if (intakeMlIndex != -1 && !cursor.isNull(intakeMlIndex)) cursor.getInt(intakeMlIndex) else null
+
+        val dailyGoalMlIndex = cursor.getColumnIndex(HydrationEventDatabaseHelper.COLUMN_DAILY_GOAL_ML)
+        val dailyGoalMl = if (dailyGoalMlIndex != -1 && !cursor.isNull(dailyGoalMlIndex)) cursor.getInt(dailyGoalMlIndex) else null
+
         return HydrationEvent(
             id = id,
             timerGeneration = timerGen,
@@ -202,7 +210,9 @@ open class HydrationEventRepository(private val dbHelper: HydrationEventDatabase
             createdAt = createdAt,
             status = status,
             updatedAt = updatedAt,
-            revision = revision
+            revision = revision,
+            intakeMl = intakeMl,
+            dailyGoalMl = dailyGoalMl
         )
     }
 }

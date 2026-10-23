@@ -15,7 +15,9 @@ data class HydrationEvent(
     val createdAt: Long,
     val status: HydrationEventStatus = HydrationEventStatus.PENDING,
     val updatedAt: Long,
-    val revision: Long = 1L
+    val revision: Long = 1L,
+    val intakeMl: Int? = null,
+    val dailyGoalMl: Int? = null
 ) {
     companion object {
         fun generateId(timerGeneration: Long, alertId: Long): String {
@@ -26,7 +28,9 @@ data class HydrationEvent(
             timerGeneration: Long,
             alertId: Long,
             scheduledAt: Long,
-            createdAt: Long = System.currentTimeMillis()
+            createdAt: Long = System.currentTimeMillis(),
+            intakeMl: Int? = null,
+            dailyGoalMl: Int? = null
         ): HydrationEvent {
             return HydrationEvent(
                 id = generateId(timerGeneration, alertId),
@@ -36,7 +40,9 @@ data class HydrationEvent(
                 createdAt = createdAt,
                 status = HydrationEventStatus.PENDING,
                 updatedAt = createdAt,
-                revision = 1L
+                revision = 1L,
+                intakeMl = intakeMl,
+                dailyGoalMl = dailyGoalMl
             )
         }
     }

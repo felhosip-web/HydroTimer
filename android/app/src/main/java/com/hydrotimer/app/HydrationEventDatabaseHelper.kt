@@ -11,7 +11,7 @@ class HydrationEventDatabaseHelper(
 
     companion object {
         const val DATABASE_NAME = "hydro_timer_events.db"
-        const val DATABASE_VERSION = 1
+        const val DATABASE_VERSION = 2
 
         const val TABLE_EVENTS = "hydration_events"
         const val COLUMN_ID = "id"
@@ -22,6 +22,8 @@ class HydrationEventDatabaseHelper(
         const val COLUMN_STATUS = "status"
         const val COLUMN_UPDATED_AT = "updated_at"
         const val COLUMN_REVISION = "revision"
+        const val COLUMN_INTAKE_ML = "intake_ml"
+        const val COLUMN_DAILY_GOAL_ML = "daily_goal_ml"
     }
 
     override fun onCreate(db: SQLiteDatabase) {
@@ -34,7 +36,9 @@ class HydrationEventDatabaseHelper(
                 $COLUMN_CREATED_AT INTEGER NOT NULL,
                 $COLUMN_STATUS TEXT NOT NULL,
                 $COLUMN_UPDATED_AT INTEGER NOT NULL,
-                $COLUMN_REVISION INTEGER NOT NULL DEFAULT 1
+                $COLUMN_REVISION INTEGER NOT NULL DEFAULT 1,
+                $COLUMN_INTAKE_ML INTEGER,
+                $COLUMN_DAILY_GOAL_ML INTEGER
             )
         """.trimIndent()
 
@@ -54,6 +58,9 @@ class HydrationEventDatabaseHelper(
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        // Non-destructive initial schema. Future migrations will be added incrementally without dropping tables.
+        if (oldVersion < 2) {
+            db.execSQL("ALTER TABLE $TABLE_EVENTS ADD COLUMN $COLUMN_INTAKE_ML INTEGER")
+            db.execSQL("ALTER TABLE $TABLE_EVENTS ADD COLUMN $COLUMN_DAILY_GOAL_ML INTEGER")
+        }
     }
 }
