@@ -196,6 +196,51 @@ describe('Event Log P4 Comprehensive Cross-Platform Regression Suite (Web)', () 
       expect(allPending.length).toBe(1);
     });
 
+    test('Direct repository createIfAbsent ignores duplicate and preserves original snapshot', async () => {
+      const originalEvent = createPendingHydrationEvent({
+        timerGeneration: 1,
+        alertId: 1001,
+        scheduledAt: fixedNow,
+        createdAt: fixedNow,
+        intakeMl: 250,
+        dailyGoalMl: 2500,
+      });
+
+      const createdFirst = await eventRepo.createIfAbsent(originalEvent);
+      expect(createdFirst.id).toBe('1_1001');
+      expect(createdFirst.createdAt).toBe(fixedNow);
+      expect(createdFirst.intakeMl).toBe(250);
+      expect(createdFirst.dailyGoalMl).toBe(2500);
+
+      // Attempt duplicate createIfAbsent call with same stable ID but deliberately different createdAt, intakeMl, dailyGoalMl
+      const duplicateEvent: HydrationEvent = {
+        id: '1_1001',
+        timerGeneration: 1,
+        alertId: 1001,
+        scheduledAt: fixedNow,
+        createdAt: fixedNow + 99999,
+        status: 'PENDING',
+        updatedAt: fixedNow + 99999,
+        revision: 1,
+        intakeMl: 999,
+        dailyGoalMl: 9999,
+      };
+
+      const resultSecond = await eventRepo.createIfAbsent(duplicateEvent);
+
+      // Assert that the returned and stored record retains original ID, createdAt, status, intakeMl, dailyGoalMl
+      expect(resultSecond.id).toBe('1_1001');
+      expect(resultSecond.createdAt).toBe(fixedNow);
+      expect(resultSecond.status).toBe('PENDING');
+      expect(resultSecond.intakeMl).toBe(250);
+      expect(resultSecond.dailyGoalMl).toBe(2500);
+
+      const fetched = await eventRepo.getById('1_1001');
+      expect(fetched?.createdAt).toBe(fixedNow);
+      expect(fetched?.intakeMl).toBe(250);
+      expect(fetched?.dailyGoalMl).toBe(2500);
+    });
+
     test('New legitimate alert after resolving previous alert creates distinct event', async () => {
       const initialSnapshot: TimerSnapshot = {
         state: 'WAITING',

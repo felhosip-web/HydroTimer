@@ -119,6 +119,9 @@ class EventLogP4RegressionTest {
     // 3. Repeated alerts and idempotency
     @Test
     fun test3_duplicateTimerTriggerDispatchCreatesSingleRecordAndPreservesSnapshot() {
+        // Explicitly disable quiet hours to ensure trigger determinism regardless of cleared pref defaults
+        timerManager.setQuietHoursEnabled(false)
+
         val waitingSnap = TimerSnapshot(state = TimerState.WAITING, timerGeneration = 1L, nextTriggerAt = fixedNow)
         timerManager.saveSnapshot(waitingSnap)
 
@@ -153,6 +156,50 @@ class EventLogP4RegressionTest {
         val saved3 = repository.getById("1_1001")
         assertEquals(originalCreatedAt, saved3?.createdAt)
         assertEquals(250, saved3?.intakeMl)
+    }
+
+    @Test
+    fun test3b_directRepositoryCreateIfAbsentIgnoresDuplicateAndPreservesOriginalSnapshot() {
+        val originalEvent = HydrationEvent.createPending(
+            timerGeneration = 1L,
+            alertId = 1001L,
+            scheduledAt = fixedNow,
+            createdAt = fixedNow,
+            intakeMl = 250,
+            dailyGoalMl = 2500
+        )
+        val createdFirst = repository.createIfAbsent(originalEvent)
+        assertEquals("1_1001", createdFirst.id)
+        assertEquals(fixedNow, createdFirst.createdAt)
+        assertEquals(250, createdFirst.intakeMl)
+        assertEquals(2500, createdFirst.dailyGoalMl)
+
+        // Attempt duplicate createIfAbsent call with same stable ID but deliberately different createdAt, intakeMl, dailyGoalMl
+        val duplicateEvent = HydrationEvent(
+            id = "1_1001",
+            timerGeneration = 1L,
+            alertId = 1001L,
+            scheduledAt = fixedNow,
+            createdAt = fixedNow + 99999L,
+            status = HydrationEventStatus.PENDING,
+            updatedAt = fixedNow + 99999L,
+            revision = 1L,
+            intakeMl = 999,
+            dailyGoalMl = 9999
+        )
+        val resultSecond = repository.createIfAbsent(duplicateEvent)
+
+        // Assert that the returned and stored record retains original ID, createdAt, status, intakeMl, dailyGoalMl
+        assertEquals("1_1001", resultSecond.id)
+        assertEquals(fixedNow, resultSecond.createdAt)
+        assertEquals(HydrationEventStatus.PENDING, resultSecond.status)
+        assertEquals(250, resultSecond.intakeMl)
+        assertEquals(2500, resultSecond.dailyGoalMl)
+
+        val fetched = repository.getById("1_1001")
+        assertEquals(fixedNow, fetched?.createdAt)
+        assertEquals(250, fetched?.intakeMl)
+        assertEquals(2500, fetched?.dailyGoalMl)
     }
 
     // 4. Timer lifecycle
