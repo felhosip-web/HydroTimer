@@ -35,6 +35,8 @@ class EventLogP4RegressionTest {
 
         timerManager = TimerManager(context, repository, directExecutor)
         timerManager.getPrefs().edit().clear().commit()
+        // Explicitly disable quiet hours to ensure trigger determinism regardless of cleared pref defaults
+        timerManager.setQuietHoursEnabled(false)
     }
 
     @After
@@ -119,9 +121,6 @@ class EventLogP4RegressionTest {
     // 3. Repeated alerts and idempotency
     @Test
     fun test3_duplicateTimerTriggerDispatchCreatesSingleRecordAndPreservesSnapshot() {
-        // Explicitly disable quiet hours to ensure trigger determinism regardless of cleared pref defaults
-        timerManager.setQuietHoursEnabled(false)
-
         val waitingSnap = TimerSnapshot(state = TimerState.WAITING, timerGeneration = 1L, nextTriggerAt = fixedNow)
         timerManager.saveSnapshot(waitingSnap)
 
@@ -326,6 +325,7 @@ class EventLogP4RegressionTest {
         val reopenedHelper = HydrationEventDatabaseHelper(context, "hydro_timer_events_p4.db")
         val reopenedRepo = HydrationEventRepository(reopenedHelper)
         val reopenedManager = TimerManager(context, reopenedRepo, directExecutor)
+        reopenedManager.setQuietHoursEnabled(false)
 
         // Recover active alert
         reopenedManager.dispatch(TimerEvent(type = TimerEventType.RECOVER, timestamp = fixedNow + 2000L), fixedNow + 2000L)
